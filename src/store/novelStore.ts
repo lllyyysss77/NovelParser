@@ -477,10 +477,11 @@ export const useNovelStore = create<NovelStore>((set, get) => ({
 
         await listen<StreamingEvent>('analysis_streaming', (event) => {
             const payload = event.payload;
+            const current = get().streamContent[payload.chapter_id] || '';
             set({
                 streamContent: {
                     ...get().streamContent,
-                    [payload.chapter_id]: payload.full_content
+                    [payload.chapter_id]: current + payload.chunk
                 }
             });
         });
