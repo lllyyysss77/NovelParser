@@ -38,6 +38,27 @@ fn preview_epub(path: String) -> Result<EpubPreview, String> {
     })
 }
 
+/// Shared import helper: creates novel + saves chapters in a transaction.
+fn do_import_novel(
+    state: &State<AppState>,
+    title: String,
+    source_type: SourceType,
+    chapters: Vec<(String, String)>,
+) -> Result<String, String> {
+    let novel_id = uuid::Uuid::new_v4().to_string();
+    let novel = Novel {
+        id: novel_id.clone(),
+        title,
+        source_type,
+        enabled_dimensions: AnalysisDimension::default_set(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.save_novel_with_chapters(&novel, chapters)
+        .map_err(|e| e.to_string())?;
+    Ok(novel_id)
+}
+
 #[tauri::command]
 fn import_epub_selected(
     state: State<AppState>,
@@ -45,94 +66,19 @@ fn import_epub_selected(
     selected_indices: Vec<usize>,
 ) -> Result<String, String> {
     let (title, chapters) = epub_parser::parse_epub_selected(&path, &selected_indices)?;
-
-    let novel_id = uuid::Uuid::new_v4().to_string();
-    let novel = Novel {
-        id: novel_id.clone(),
-        title,
-        source_type: SourceType::Epub(path),
-        enabled_dimensions: AnalysisDimension::default_set(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.save_novel(&novel).map_err(|e| e.to_string())?;
-
-    for (i, (chapter_title, content)) in chapters.into_iter().enumerate() {
-        let chapter = Chapter {
-            id: None,
-            novel_id: novel_id.clone(),
-            index: i,
-            title: chapter_title,
-            content,
-            analysis: None,
-        };
-        db.save_chapter(&chapter).map_err(|e| e.to_string())?;
-    }
-
-    Ok(novel_id)
+    do_import_novel(&state, title, SourceType::Epub(path), chapters)
 }
 
 #[tauri::command]
 fn import_txt_files(state: State<AppState>, paths: Vec<String>) -> Result<String, String> {
     let (title, chapters) = txt_parser::parse_txt_files(paths.clone())?;
-
-    let novel_id = uuid::Uuid::new_v4().to_string();
-    let novel = Novel {
-        id: novel_id.clone(),
-        title,
-        source_type: SourceType::TxtFiles(paths),
-        enabled_dimensions: AnalysisDimension::default_set(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.save_novel(&novel).map_err(|e| e.to_string())?;
-
-    for (i, (chapter_title, content)) in chapters.into_iter().enumerate() {
-        let chapter = Chapter {
-            id: None,
-            novel_id: novel_id.clone(),
-            index: i,
-            title: chapter_title,
-            content,
-            analysis: None,
-        };
-        db.save_chapter(&chapter).map_err(|e| e.to_string())?;
-    }
-
-    Ok(novel_id)
+    do_import_novel(&state, title, SourceType::TxtFiles(paths), chapters)
 }
 
 #[tauri::command]
 fn import_single_txt(state: State<AppState>, path: String) -> Result<String, String> {
     let (title, chapters) = txt_parser::parse_single_txt(&path)?;
-
-    let novel_id = uuid::Uuid::new_v4().to_string();
-    let novel = Novel {
-        id: novel_id.clone(),
-        title,
-        source_type: SourceType::SingleTxt(path),
-        enabled_dimensions: AnalysisDimension::default_set(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.save_novel(&novel).map_err(|e| e.to_string())?;
-
-    for (i, (chapter_title, content)) in chapters.into_iter().enumerate() {
-        let chapter = Chapter {
-            id: None,
-            novel_id: novel_id.clone(),
-            index: i,
-            title: chapter_title,
-            content,
-            analysis: None,
-        };
-        db.save_chapter(&chapter).map_err(|e| e.to_string())?;
-    }
-
-    Ok(novel_id)
+    do_import_novel(&state, title, SourceType::SingleTxt(path), chapters)
 }
 
 #[tauri::command]
@@ -434,51 +380,37 @@ async fn analyze_chapter_api(
     do_analyze_chapter(&app, &state.db, chapter_id, &dimensions).await
 }
 
-#[tauri::command]
-async fn batch_analyze_novel(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    novel_id: String,
+/// Shared batch analysis helper with error tolerance.
+/// Failed chapters are skipped and errors collected instead of aborting.
+async fn do_batch_analyze(
+    app: &tauri::AppHandle,
+    db_mutex: &Mutex<Database>,
+    cancel_flag: &AtomicBool,
+    novel_id: &str,
+    metas: Vec<ChapterMeta>,
+    dimensions: &[AnalysisDimension],
+    concurrency: usize,
 ) -> Result<(), String> {
-    let (novel, unanalyzed, config) = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        let novel = db.load_novel(&novel_id).map_err(|e| e.to_string())?;
-        let metas = db
-            .list_chapter_metas(&novel_id)
-            .map_err(|e| e.to_string())?;
-        let unanalyzed: Vec<_> = metas.into_iter().filter(|m| !m.has_analysis).collect();
-        let config = db.load_llm_config().unwrap_or_default();
-        (novel, unanalyzed, config)
-    };
-
-    let total = unanalyzed.len();
-
+    let total = metas.len();
     if total == 0 {
         return Ok(());
     }
 
-    state.batch_cancel.store(false, Ordering::Relaxed);
+    cancel_flag.store(false, Ordering::Relaxed);
 
     use futures::StreamExt;
     let completed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let failed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-    let concurrency = if config.context_injection_mode != ContextInjectionMode::None {
-        1
-    } else {
-        config.max_concurrent_tasks as usize
-    };
-
-    let mut futures = futures::stream::iter(unanalyzed.into_iter().map(|meta| {
+    let mut futures = futures::stream::iter(metas.into_iter().map(|meta| {
         let app = app.clone();
-        let db = &state.db;
-        let dimensions = &novel.enabled_dimensions;
-        let novel_id = novel_id.clone();
+        let novel_id = novel_id.to_string();
         let completed = completed.clone();
-        let cancel_flag = &state.batch_cancel;
+        let failed = failed.clone();
 
         async move {
             if cancel_flag.load(Ordering::Relaxed) {
-                return Ok(true);
+                return Ok::<bool, String>(true); // cancelled
             }
 
             let completed_count = completed.load(Ordering::Relaxed);
@@ -497,7 +429,7 @@ async fn batch_analyze_novel(
                 },
             );
 
-            match do_analyze_chapter(&app, db, meta.id, dimensions).await {
+            match do_analyze_chapter(&app, db_mutex, meta.id, dimensions).await {
                 Ok(_) => {
                     let completed_count = completed.fetch_add(1, Ordering::Relaxed) + 1;
                     let _ = app.emit(
@@ -514,9 +446,10 @@ async fn batch_analyze_novel(
                             ),
                         },
                     );
-                    Ok(false)
                 }
                 Err(e) => {
+                    // Error tolerance: skip failed chapter, continue batch
+                    failed.fetch_add(1, Ordering::Relaxed);
                     let completed_count = completed.load(Ordering::Relaxed);
                     let _ = app.emit(
                         "batch_progress",
@@ -529,50 +462,88 @@ async fn batch_analyze_novel(
                             message: format!("分析 {} 失败: {}", meta.title, e),
                         },
                     );
-                    Err(e)
                 }
             }
+            Ok(false)
         }
     }))
     .buffer_unordered(concurrency);
 
     while let Some(res) = futures.next().await {
-        match res {
-            Ok(cancelled) => {
-                if cancelled {
-                    state.batch_cancel.store(false, Ordering::Relaxed);
-                    let current = completed.load(Ordering::Relaxed);
-                    let _ = app.emit(
-                        "batch_progress",
-                        ProgressEvent {
-                            novel_id: novel_id.clone(),
-                            chapter_id: None,
-                            status: "batch_cancelled".to_string(),
-                            current,
-                            total,
-                            message: format!("批量分析已取消 ({}/{})", current, total),
-                        },
-                    );
-                    return Ok(());
-                }
-            }
-            Err(e) => return Err(e),
+        if let Ok(true) = res {
+            cancel_flag.store(false, Ordering::Relaxed);
+            let current = completed.load(Ordering::Relaxed);
+            let _ = app.emit(
+                "batch_progress",
+                ProgressEvent {
+                    novel_id: novel_id.to_string(),
+                    chapter_id: None,
+                    status: "batch_cancelled".to_string(),
+                    current,
+                    total,
+                    message: format!("批量分析已取消 ({}/{})", current, total),
+                },
+            );
+            return Ok(());
         }
     }
+
+    let fail_count = failed.load(Ordering::Relaxed);
+    let success_count = completed.load(Ordering::Relaxed);
+    let done_message = if fail_count > 0 {
+        format!("批量分析完成：成功 {}，失败 {}", success_count, fail_count)
+    } else {
+        "批量分析完成".to_string()
+    };
 
     let _ = app.emit(
         "batch_progress",
         ProgressEvent {
-            novel_id: novel_id.clone(),
+            novel_id: novel_id.to_string(),
             chapter_id: None,
             status: "batch_done".to_string(),
             current: total,
             total,
-            message: "批量分析完成".to_string(),
+            message: done_message,
         },
     );
 
     Ok(())
+}
+
+#[tauri::command]
+async fn batch_analyze_novel(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    novel_id: String,
+) -> Result<(), String> {
+    let (novel, unanalyzed, config) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let novel = db.load_novel(&novel_id).map_err(|e| e.to_string())?;
+        let metas = db
+            .list_chapter_metas(&novel_id)
+            .map_err(|e| e.to_string())?;
+        let unanalyzed: Vec<_> = metas.into_iter().filter(|m| !m.has_analysis).collect();
+        let config = db.load_llm_config().unwrap_or_default();
+        (novel, unanalyzed, config)
+    };
+
+    let concurrency = if config.context_injection_mode != ContextInjectionMode::None {
+        1
+    } else {
+        config.max_concurrent_tasks as usize
+    };
+
+    do_batch_analyze(
+        &app,
+        &state.db,
+        &state.batch_cancel,
+        &novel_id,
+        unanalyzed,
+        &novel.enabled_dimensions,
+        concurrency,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -596,127 +567,22 @@ async fn batch_analyze_chapters(
         (novel, selected, config)
     };
 
-    let total = metas.len();
-    if total == 0 {
-        return Ok(());
-    }
-
-    state.batch_cancel.store(false, Ordering::Relaxed);
-
-    use futures::StreamExt;
-    let completed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-
     let concurrency = if config.context_injection_mode != ContextInjectionMode::None {
         1
     } else {
         config.max_concurrent_tasks as usize
     };
 
-    let mut futures = futures::stream::iter(metas.into_iter().map(|meta| {
-        let app = app.clone();
-        let db = &state.db;
-        let dimensions = &novel.enabled_dimensions;
-        let novel_id = novel_id.clone();
-        let completed = completed.clone();
-        let cancel_flag = &state.batch_cancel;
-
-        async move {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Ok(true);
-            }
-
-            let completed_count = completed.load(Ordering::Relaxed);
-            let _ = app.emit(
-                "batch_progress",
-                ProgressEvent {
-                    novel_id: novel_id.clone(),
-                    chapter_id: Some(meta.id),
-                    status: "batch_analyzing".to_string(),
-                    current: completed_count,
-                    total,
-                    message: format!(
-                        "派发任务: {} (已完成 {}/{})",
-                        meta.title, completed_count, total
-                    ),
-                },
-            );
-
-            match do_analyze_chapter(&app, db, meta.id, dimensions).await {
-                Ok(_) => {
-                    let completed_count = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                    let _ = app.emit(
-                        "batch_progress",
-                        ProgressEvent {
-                            novel_id,
-                            chapter_id: Some(meta.id),
-                            status: "chapter_done".to_string(),
-                            current: completed_count,
-                            total,
-                            message: format!(
-                                "已完成: {} (总计 {}/{})",
-                                meta.title, completed_count, total
-                            ),
-                        },
-                    );
-                    Ok(false)
-                }
-                Err(e) => {
-                    let completed_count = completed.load(Ordering::Relaxed);
-                    let _ = app.emit(
-                        "batch_progress",
-                        ProgressEvent {
-                            novel_id,
-                            chapter_id: Some(meta.id),
-                            status: "error".to_string(),
-                            current: completed_count,
-                            total,
-                            message: format!("分析 {} 失败: {}", meta.title, e),
-                        },
-                    );
-                    Err(e)
-                }
-            }
-        }
-    }))
-    .buffer_unordered(concurrency);
-
-    while let Some(res) = futures.next().await {
-        match res {
-            Ok(cancelled) => {
-                if cancelled {
-                    state.batch_cancel.store(false, Ordering::Relaxed);
-                    let current = completed.load(Ordering::Relaxed);
-                    let _ = app.emit(
-                        "batch_progress",
-                        ProgressEvent {
-                            novel_id: novel_id.clone(),
-                            chapter_id: None,
-                            status: "batch_cancelled".to_string(),
-                            current,
-                            total,
-                            message: format!("批量分析已取消 ({}/{})", current, total),
-                        },
-                    );
-                    return Ok(());
-                }
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    let _ = app.emit(
-        "batch_progress",
-        ProgressEvent {
-            novel_id: novel_id.clone(),
-            chapter_id: None,
-            status: "batch_done".to_string(),
-            current: total,
-            total,
-            message: "批量分析完成".to_string(),
-        },
-    );
-
-    Ok(())
+    do_batch_analyze(
+        &app,
+        &state.db,
+        &state.batch_cancel,
+        &novel_id,
+        metas,
+        &novel.enabled_dimensions,
+        concurrency,
+    )
+    .await
 }
 
 // ---- Settings Commands ----
