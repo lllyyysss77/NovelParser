@@ -69,8 +69,13 @@ impl Database {
         let source_type_json = serde_json::to_string(&novel.source_type).unwrap_or_default();
         let dims_json = serde_json::to_string(&novel.enabled_dimensions).unwrap_or_default();
         self.conn.execute(
-            "INSERT OR REPLACE INTO novels (id, title, source_type, enabled_dimensions, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO novels (id, title, source_type, enabled_dimensions, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                title=excluded.title,
+                source_type=excluded.source_type,
+                enabled_dimensions=excluded.enabled_dimensions,
+                created_at=excluded.created_at",
             params![
                 novel.id,
                 novel.title,
