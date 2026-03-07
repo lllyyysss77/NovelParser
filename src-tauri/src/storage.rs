@@ -166,6 +166,7 @@ impl Database {
 
     // ---- Chapter CRUD ----
 
+    #[allow(dead_code)]
     pub fn save_chapter(&self, chapter: &Chapter) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO chapters (novel_id, chapter_index, title, content, analysis)
