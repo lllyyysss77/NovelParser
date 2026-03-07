@@ -14,6 +14,7 @@ export default function SummaryPage() {
     } = useNovelStore();
 
     const [exportAlert, setExportAlert] = useState<{ title: string, msg: string, kind: 'info' | 'error' } | null>(null);
+    const [confirmClearSummary, setConfirmClearSummary] = useState(false);
 
     useEffect(() => {
         if (novelId) {
@@ -77,7 +78,7 @@ export default function SummaryPage() {
                             </button>
                             <button
                                 className="btn btn-error btn-outline"
-                                onClick={async () => await useNovelStore.getState().clearNovelSummary(currentNovel.id)}
+                                onClick={() => setConfirmClearSummary(true)}
                             >
                                 清除分析
                             </button>
@@ -182,6 +183,19 @@ export default function SummaryPage() {
                     hideCancel={true}
                     onConfirm={() => setExportAlert(null)}
                     onCancel={() => setExportAlert(null)}
+                />
+            )}
+            {confirmClearSummary && (
+                <ConfirmDialog
+                    title="清除全书分析"
+                    message="确定要清除全书脉络分析吗？清除后可以重新生成。"
+                    confirmText="清除"
+                    kind="warning"
+                    onConfirm={async () => {
+                        await useNovelStore.getState().clearNovelSummary(currentNovel.id);
+                        setConfirmClearSummary(false);
+                    }}
+                    onCancel={() => setConfirmClearSummary(false)}
                 />
             )}
         </div>

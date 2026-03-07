@@ -83,6 +83,7 @@ function StreamingJsonViewer({ content }: { content: string }) {
 function FullBookSummaryView({ novelId }: { novelId: string }) {
     const { novelSummary, generateFullSummary, loading, chapters, analysisMode } = useNovelStore();
     const analyzedCount = chapters.filter(c => c.has_analysis).length;
+    const [confirmClearSummary, setConfirmClearSummary] = useState(false);
 
     useEffect(() => {
         useNovelStore.getState().fetchSummary();
@@ -155,7 +156,7 @@ function FullBookSummaryView({ novelId }: { novelId: string }) {
                     <div className="flex gap-2">
                         <button
                             className="btn btn-outline btn-sm btn-error"
-                            onClick={async () => await useNovelStore.getState().clearNovelSummary(novelId)}
+                            onClick={() => setConfirmClearSummary(true)}
                         >
                             清除分析
                         </button>
@@ -207,6 +208,19 @@ function FullBookSummaryView({ novelId }: { novelId: string }) {
                     </p>
                 </div>
             </div>
+            {confirmClearSummary && (
+                <ConfirmDialog
+                    title="清除全书分析"
+                    message="确定要清除全书脉络分析吗？清除后可以重新生成。"
+                    confirmText="清除"
+                    kind="warning"
+                    onConfirm={async () => {
+                        await useNovelStore.getState().clearNovelSummary(novelId);
+                        setConfirmClearSummary(false);
+                    }}
+                    onCancel={() => setConfirmClearSummary(false)}
+                />
+            )}
         </div>
     );
 }
@@ -242,15 +256,15 @@ export default function NovelPage() {
         fetchDimensions();
     }, [novelId]);
 
-    if (!currentNovel) {
-        return <div className="flex-1 flex items-center justify-center"><span className="loading loading-spinner loading-lg" /></div>;
-    }
-
     useEffect(() => {
         if (!batchProgress || batchProgress.status === 'batch_done' || batchProgress.status === 'batch_cancelled') {
             setIsCancelling(false);
         }
     }, [batchProgress?.status]);
+
+    if (!currentNovel) {
+        return <div className="flex-1 flex items-center justify-center"><span className="loading loading-spinner loading-lg" /></div>;
+    }
 
     const handleAnalyze = async (chapterId: number) => {
         try {

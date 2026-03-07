@@ -457,6 +457,8 @@ async fn batch_analyze_novel(
         return Ok(());
     }
 
+    state.batch_cancel.store(false, Ordering::Relaxed);
+
     use futures::StreamExt;
     let completed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
