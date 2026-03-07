@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useNovelStore } from '../store/novelStore';
+import { useNovelStore } from '../store/index';
 import { ArrowLeft, BookOpen, Download } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
