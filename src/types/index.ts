@@ -193,11 +193,7 @@ export interface CharacterArc {
 
 export interface ChapterOutline {
   brief: string;
-  chapter_goal?: string | null;
-  core_events: string[];
-  new_characters: string[];
-  status_changes: string[];
-  hook?: string | null;
+  detail?: string;
   created_at: string;
 }
 

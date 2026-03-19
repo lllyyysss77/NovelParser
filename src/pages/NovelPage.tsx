@@ -167,49 +167,51 @@ export default function NovelPage() {
                     </div>
 
                     {/* Mode toggle + Dimension selector + Multi-select */}
-                    <div className="flex gap-2 mt-3">
-                        <div className="join flex-1">
+                    <div className="mt-3 space-y-2">
+                        <div className="join w-full">
                             <button
-                                className={`join-item btn btn-xs flex-1 ${analysisMode === 'api' ? 'btn-primary' : 'btn-ghost'}`}
+                                className={`join-item btn btn-xs flex-1 whitespace-nowrap ${analysisMode === 'api' ? 'btn-primary' : 'btn-ghost'}`}
                                 onClick={() => setAnalysisMode('api')}
                             >
                                 <Zap size={12} /> API
                             </button>
                             <button
-                                className={`join-item btn btn-xs flex-1 ${analysisMode === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
+                                className={`join-item btn btn-xs flex-1 whitespace-nowrap ${analysisMode === 'manual' ? 'btn-primary' : 'btn-ghost'}`}
                                 onClick={() => setAnalysisMode('manual')}
                             >
                                 <ClipboardCopy size={12} /> 手动
                             </button>
                             <button
-                                className={`join-item btn btn-xs flex-1 ${analysisMode === 'outline' ? 'btn-primary' : 'btn-ghost'}`}
+                                className={`join-item btn btn-xs flex-1 whitespace-nowrap ${analysisMode === 'outline' ? 'btn-primary' : 'btn-ghost'}`}
                                 onClick={() => setAnalysisMode('outline')}
                             >
                                 提纲
                             </button>
                         </div>
-                        <button
-                            className={`btn btn-xs btn-square ${multiSelectMode ? 'btn-accent' : 'btn-ghost'}`}
-                            onClick={() => multiSelectMode ? exitMultiSelect() : setMultiSelectMode(true)}
-                            title={multiSelectMode ? '退出多选' : '多选模式'}
-                        >
-                            {multiSelectMode ? <X size={14} /> : <ListChecks size={14} />}
-                        </button>
-                        <button
-                            className="btn btn-ghost btn-xs btn-square"
-                            onClick={handleExport}
-                            title={analysisMode === 'outline' ? '导出大纲文件' : '导出分析报告'}
-                            disabled={analysisMode === 'outline' && !bookOutline}
-                        >
-                            <Download size={14} />
-                        </button>
-                        <button
-                            className="btn btn-ghost btn-xs btn-square"
-                            onClick={() => setShowDimSelector(!showDimSelector)}
-                            title="维度设置"
-                        >
-                            <Settings2 size={14} />
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                className={`btn btn-xs btn-square ${multiSelectMode ? 'btn-accent' : 'btn-ghost'}`}
+                                onClick={() => multiSelectMode ? exitMultiSelect() : setMultiSelectMode(true)}
+                                title={multiSelectMode ? '退出多选' : '多选模式'}
+                            >
+                                {multiSelectMode ? <X size={14} /> : <ListChecks size={14} />}
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-xs btn-square"
+                                onClick={handleExport}
+                                title={analysisMode === 'outline' ? '导出大纲文件' : '导出分析报告'}
+                                disabled={analysisMode === 'outline' && !bookOutline}
+                            >
+                                <Download size={14} />
+                            </button>
+                            <button
+                                className="btn btn-ghost btn-xs btn-square"
+                                onClick={() => setShowDimSelector(!showDimSelector)}
+                                title="维度设置"
+                            >
+                                <Settings2 size={14} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -220,7 +222,7 @@ export default function NovelPage() {
                             <p className="text-xs text-warning mb-2">⚠ 已有分析结果，修改维度不会影响已完成的分析</p>
                         )}
                         {analysisMode === 'outline' ? (
-                            <p className="text-xs text-base-content/60">快速提纲模式不依赖分析维度，只抽取剧情推进、状态变化和阶段大纲。</p>
+                            <p className="text-xs text-base-content/60">快速提纲模式不依赖分析维度，只提取可归并的章节摘要与正文提纲。</p>
                         ) : (
                             <DimensionSelector />
                         )}
@@ -367,15 +369,8 @@ export default function NovelPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div
-                                    className="overflow-x-auto whitespace-nowrap font-medium text-sm"
+                                    className="truncate font-medium text-sm"
                                     title={ch.title || `第 ${ch.index + 1} 章`}
-                                    onWheel={(e) => {
-                                        const el = e.currentTarget;
-                                        if (el.scrollWidth > el.clientWidth) {
-                                            el.scrollLeft += e.deltaY + e.deltaX;
-                                            e.preventDefault();
-                                        }
-                                    }}
                                 >
                                     {ch.title || `第 ${ch.index + 1} 章`}
                                 </div>
@@ -485,7 +480,7 @@ export default function NovelPage() {
                                         : "提纲生成中..."}
                                 </span>
                             </div>
-                            <span className="text-xs text-base-content/50">正在提取结构化提纲</span>
+                            <span className="text-xs text-base-content/50">正在提取文本提纲</span>
                         </div>
                         <div className="flex-1 flex items-center justify-center text-base-content/40">
                             <p>正在提取该章节的快速提纲...</p>

@@ -161,28 +161,23 @@ pub fn generate_chapter_outline_prompt(title: &str, content: &str) -> String {
     let mut prompt = String::new();
 
     prompt.push_str("你是一位擅长长篇小说结构拆解的编辑助手。\n");
-    prompt.push_str("请从以下章节中提取【快速提纲】，目标是服务后续的多层归并，而不是做文学评论。\n");
-    prompt.push_str("只保留对剧情推进真正有用的信息，绝不脑补，绝不扩写。\n");
+    prompt.push_str("请从以下章节中提取【快速提纲】，供后续全书归并使用，不做文学评论。\n");
+    prompt.push_str("只保留剧情推进、人物状态变化、冲突转折和下一步线索，绝不脑补，绝不引用原文。\n");
     prompt.push_str("请严格返回 JSON，不要输出任何额外说明。\n\n");
 
     prompt.push_str("## 提取规则\n");
-    prompt.push_str("1. brief 控制在 80~150 字内。\n");
-    prompt.push_str("2. core_events 最多 3 条，只写真正推动剧情的事件。\n");
-    prompt.push_str("3. new_characters 只写首次出现或本章首次变得重要的人物。\n");
-    prompt.push_str("4. status_changes 只写会影响后文的状态变化，如目标改变、关系变化、身份暴露、阵营转换、伤亡、地点迁移。\n");
-    prompt.push_str("5. hook 只有在章末存在明确悬念、任务延续或下一步推进时才填写，否则为 null。\n\n");
+    prompt.push_str("1. brief 控制在 60~100 字，只写本章最核心推进。\n");
+    prompt.push_str("2. detail 写成一段连续文本，建议 120~220 字，按“发生了什么 -> 为什么重要 -> 给后文留下什么”组织。\n");
+    prompt.push_str("3. 只保留会影响后文的事实：目标变化、关系变化、身份暴露、阵营变化、伤亡、地点迁移、任务推进、明确悬念。\n");
+    prompt.push_str("4. 不要列点，不要分栏，不要评价写法，不要补充文中未出现的信息。\n\n");
 
     prompt.push_str(&format!("## 章节：{}\n\n", title));
     prompt.push_str(content);
     prompt.push_str("\n\n## 输出 JSON 结构\n");
     prompt.push_str(
         r#"{
-  "brief": "100字内章节概述",
-  "chapter_goal": "本章主要目标或推动力，没有则为null",
-  "core_events": ["事件1", "事件2"],
-  "new_characters": ["人物A"],
-  "status_changes": ["状态变化1"],
-  "hook": "章末悬念或下一步推进，没有则为null"
+  "brief": "简短章节概述",
+  "detail": "一段完整的章节提纲"
 }"#,
     );
 
@@ -195,9 +190,9 @@ pub fn generate_outline_group_prompt(
 ) -> String {
     let mut prompt = String::new();
 
-    prompt.push_str("你是一位长篇小说结构编辑。下面给出若干连续章节或阶段节点的轻量提纲。\n");
-    prompt.push_str("请将它们归并为一个更高层级的阶段提纲，只保留主线推进、人物线变化、冲突变化和悬念回收。\n");
-    prompt.push_str("不要重复列出所有细节，不要做文学评论，不要使用原文引用。\n");
+    prompt.push_str("你是一位长篇小说结构编辑。下面给出若干连续章节或阶段节点的提纲。\n");
+    prompt.push_str("请将它们归并为更高层级的大纲，只保留主线推进、人物线变化、冲突变化和关键伏笔回收。\n");
+    prompt.push_str("避免重复，不要复述所有细节，不要做文学评论，不要引用原文。\n");
     prompt.push_str("请严格返回 JSON。\n\n");
 
     prompt.push_str(&format!("## 当前归并层级：第 {} 层\n\n", layer));

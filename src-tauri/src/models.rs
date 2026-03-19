@@ -393,16 +393,8 @@ pub struct CharacterArc {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ChapterOutline {
     pub brief: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chapter_goal: Option<String>,
     #[serde(default)]
-    pub core_events: Vec<String>,
-    #[serde(default)]
-    pub new_characters: Vec<String>,
-    #[serde(default)]
-    pub status_changes: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hook: Option<String>,
+    pub detail: String,
     #[serde(default = "default_created_at")]
     pub created_at: String,
 }

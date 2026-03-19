@@ -369,36 +369,9 @@ pub fn generate_chapter_outlines_md(
         md.push_str(&format!("## 第 {} 章 {}\n\n", index + 1, title));
         md.push_str(&outline.brief);
         md.push_str("\n\n");
-
-        if let Some(goal) = &outline.chapter_goal {
-            md.push_str(&format!("**本章目标**：{}\n\n", goal));
-        }
-
-        if !outline.core_events.is_empty() {
-            md.push_str("**关键推进**：\n");
-            for item in &outline.core_events {
-                md.push_str(&format!("- {}\n", item));
-            }
-            md.push('\n');
-        }
-
-        if !outline.new_characters.is_empty() {
-            md.push_str(&format!(
-                "**新角色**：{}\n\n",
-                outline.new_characters.join("、")
-            ));
-        }
-
-        if !outline.status_changes.is_empty() {
-            md.push_str("**状态变化**：\n");
-            for item in &outline.status_changes {
-                md.push_str(&format!("- {}\n", item));
-            }
-            md.push('\n');
-        }
-
-        if let Some(hook) = &outline.hook {
-            md.push_str(&format!("**章末钩子**：{}\n\n", hook));
+        if !outline.detail.trim().is_empty() {
+            md.push_str(&outline.detail);
+            md.push_str("\n\n");
         }
     }
 

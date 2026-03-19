@@ -96,29 +96,8 @@ pub async fn export_book_outline(
         let book_md = export_mod::generate_book_outline_md(&novel, &book_outline);
         std::fs::write(target_dir.join("book-outline.md"), book_md).map_err(|e| e.to_string())?;
 
-        let book_json =
-            serde_json::to_string_pretty(&book_outline).map_err(|e| e.to_string())?;
-        std::fs::write(target_dir.join("book-outline.json"), book_json)
-            .map_err(|e| e.to_string())?;
-
         let chapter_md = export_mod::generate_chapter_outlines_md(&novel, &chapter_outlines);
         std::fs::write(target_dir.join("chapter-outlines.md"), chapter_md)
-            .map_err(|e| e.to_string())?;
-
-        let chapter_json = serde_json::to_string_pretty(
-            &chapter_outlines
-                .iter()
-                .map(|(index, title, outline)| {
-                    serde_json::json!({
-                        "index": index,
-                        "title": title,
-                        "outline": outline,
-                    })
-                })
-                .collect::<Vec<_>>(),
-        )
-        .map_err(|e| e.to_string())?;
-        std::fs::write(target_dir.join("chapter-outlines.json"), chapter_json)
             .map_err(|e| e.to_string())?;
 
         Ok::<(), String>(())
