@@ -9,6 +9,7 @@ import StreamingJsonViewer from '../components/StreamingJsonViewer';
 import FullBookSummaryView from '../components/FullBookSummaryView';
 import BookOutlineView from '../components/BookOutlineView';
 import ChapterOutlineView from '../components/ChapterOutlineView';
+import VirtualList from '../components/VirtualList';
 import { Play, CheckCircle, Circle, ChevronRight, Zap, ClipboardCopy, Settings2, Trash2, ListChecks, X, Download } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -329,11 +330,14 @@ export default function NovelPage() {
                 )}
 
                 {/* Chapter list */}
-                <div className="flex-1 overflow-y-auto">
-                    {chapters.map((ch) => (
+                <VirtualList
+                    className="flex-1 overflow-y-auto"
+                    items={chapters}
+                    itemHeight={84}
+                    renderItem={(ch) => (
                         <button
                             key={ch.id}
-                            className={`w-full text-left px-4 py-3 border-b border-base-300/50 flex items-center gap-3 hover:bg-base-300/50 transition-colors group ${!multiSelectMode && selectedChapter?.id === ch.id && viewMode === 'chapter' ? 'bg-base-300' : ''
+                            className={`w-full h-[84px] text-left px-4 py-3 border-b border-base-300/50 flex items-center gap-3 hover:bg-base-300/50 transition-colors group ${!multiSelectMode && selectedChapter?.id === ch.id && viewMode === 'chapter' ? 'bg-base-300' : ''
                                 } ${multiSelectMode && multiSelectIds.has(ch.id) ? 'bg-accent/10' : ''}`}
                             onClick={() => {
                                 setViewMode('chapter');
@@ -393,8 +397,8 @@ export default function NovelPage() {
                                 </>
                             )}
                         </button>
-                    ))}
-                </div>
+                    )}
+                />
             </aside>
 
             {/* Main content */}
