@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type {
     NovelMeta, Novel, ChapterMeta, Chapter, ChapterAnalysis,
-    LlmConfig, AnalysisDimension, AnalysisMode, DimensionInfo, NovelSummary,
+    LlmConfig, AnalysisDimension, AnalysisMode, DimensionInfo, NovelSummary, ChapterOutline, BookOutline,
     ProgressEvent, EpubPreview,
 } from '../types';
 
@@ -32,6 +32,7 @@ export interface ChapterSlice {
     deleteChapter: (chapterId: number, novelId: string) => Promise<void>;
     deleteChapters: (chapterIds: number[], novelId: string) => Promise<void>;
     clearChapterAnalysis: (chapterId: number, novelId: string) => Promise<void>;
+    clearChapterOutline: (chapterId: number, novelId: string) => Promise<void>;
 }
 
 export interface AnalysisSlice {
@@ -61,6 +62,20 @@ export interface SummarySlice {
     clearNovelSummary: (novelId: string) => Promise<void>;
 }
 
+export interface OutlineSlice {
+    bookOutline: BookOutline | null;
+    outlineProgress: ProgressEvent | null;
+    outlineBatchProgress: ProgressEvent | null;
+    outlineBatchStartTime: number | null;
+    outliningChapterIds: Set<number>;
+    fetchBookOutline: () => Promise<void>;
+    generateChapterOutlineApi: (chapterId: number) => Promise<ChapterOutline>;
+    batchGenerateOutlines: (novelId: string) => Promise<void>;
+    batchGenerateOutlineChapters: (novelId: string, chapterIds: number[]) => Promise<void>;
+    generateBookOutline: (novelId: string) => Promise<void>;
+    clearBookOutline: (novelId: string) => Promise<void>;
+}
+
 export interface SettingsSlice {
     llmConfig: LlmConfig;
     dimensions: DimensionInfo[];
@@ -76,5 +91,5 @@ export interface EventSlice {
     initEventListeners: () => Promise<void>;
 }
 
-export type StoreState = SharedState & NovelSlice & ChapterSlice & AnalysisSlice & SummarySlice & SettingsSlice & EventSlice;
+export type StoreState = SharedState & NovelSlice & ChapterSlice & AnalysisSlice & SummarySlice & OutlineSlice & SettingsSlice & EventSlice;
 export type StoreSlice<T> = StateCreator<StoreState, [], [], T>;

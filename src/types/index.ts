@@ -46,6 +46,7 @@ export interface ChapterMeta {
   index: number;
   title: string;
   has_analysis: boolean;
+  has_outline: boolean;
   token_estimate: number;
 }
 
@@ -56,6 +57,7 @@ export interface Chapter {
   title: string;
   content: string;
   analysis: ChapterAnalysis | null;
+  outline?: ChapterOutline | null;
 }
 
 // ---- Analysis Types ----
@@ -189,6 +191,44 @@ export interface CharacterArc {
   arc: string;
 }
 
+export interface ChapterOutline {
+  brief: string;
+  chapter_goal?: string | null;
+  core_events: string[];
+  new_characters: string[];
+  status_changes: string[];
+  hook?: string | null;
+  created_at: string;
+}
+
+export interface OutlineSegment {
+  title: string;
+  chapter_start: number;
+  chapter_end: number;
+  summary: string;
+}
+
+export interface OutlineCharacterArc {
+  name: string;
+  arc: string;
+}
+
+export interface SetupPayoff {
+  setup: string;
+  payoff?: string | null;
+  chapter_ref?: string | null;
+}
+
+export interface BookOutline {
+  created_at: string;
+  overview: string;
+  stage_outlines: OutlineSegment[];
+  main_plot_threads: string[];
+  key_character_arcs: OutlineCharacterArc[];
+  major_conflicts: string[];
+  setup_payoff_map: SetupPayoff[];
+}
+
 // ---- LLM Config ----
 
 export type ContextInjectionMode = 'None' | 'PreviousChapter' | 'AllPrevious';
@@ -205,7 +245,7 @@ export interface LlmConfig {
   context_injection_mode: ContextInjectionMode;
 }
 
-export type AnalysisMode = 'api' | 'manual';
+export type AnalysisMode = 'api' | 'manual' | 'outline';
 
 // ---- Events ----
 

@@ -44,6 +44,8 @@ pub struct Chapter {
     pub title: String,
     pub content: String,
     pub analysis: Option<ChapterAnalysis>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outline: Option<ChapterOutline>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +54,8 @@ pub struct ChapterMeta {
     pub index: usize,
     pub title: String,
     pub has_analysis: bool,
+    #[serde(default)]
+    pub has_outline: bool,
     pub token_estimate: usize,
 }
 
@@ -382,6 +386,77 @@ fn default_created_at() -> String {
 pub struct CharacterArc {
     pub name: String,
     pub arc: String,
+}
+
+// ---- Outline ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChapterOutline {
+    pub brief: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter_goal: Option<String>,
+    #[serde(default)]
+    pub core_events: Vec<String>,
+    #[serde(default)]
+    pub new_characters: Vec<String>,
+    #[serde(default)]
+    pub status_changes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook: Option<String>,
+    #[serde(default = "default_created_at")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OutlineSegment {
+    pub title: String,
+    pub chapter_start: usize,
+    pub chapter_end: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OutlineCharacterArc {
+    pub name: String,
+    pub arc: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SetupPayoff {
+    pub setup: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payoff: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chapter_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BookOutline {
+    #[serde(default = "default_created_at")]
+    pub created_at: String,
+    #[serde(default)]
+    pub overview: String,
+    #[serde(default)]
+    pub stage_outlines: Vec<OutlineSegment>,
+    #[serde(default)]
+    pub main_plot_threads: Vec<String>,
+    #[serde(default)]
+    pub key_character_arcs: Vec<OutlineCharacterArc>,
+    #[serde(default)]
+    pub major_conflicts: Vec<String>,
+    #[serde(default)]
+    pub setup_payoff_map: Vec<SetupPayoff>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutlineCacheEntry {
+    pub layer: i32,
+    pub group_index: i32,
+    pub chapter_start: usize,
+    pub chapter_end: usize,
+    pub content_hash: String,
+    pub outline: BookOutline,
+    pub created_at: String,
 }
 
 // ---- LLM Config ----

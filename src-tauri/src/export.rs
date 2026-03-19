@@ -295,3 +295,112 @@ pub fn generate_chapter_md(ch: &Chapter) -> String {
 
     md
 }
+
+pub fn generate_book_outline_md(novel: &Novel, outline: &BookOutline) -> String {
+    let mut md = String::new();
+    md.push_str(&format!("# 《{}》快速提纲\n\n", novel.title));
+    md.push_str("## 整体概览\n\n");
+    md.push_str(&outline.overview);
+    md.push_str("\n\n");
+
+    if !outline.stage_outlines.is_empty() {
+        md.push_str("## 阶段大纲\n\n");
+        for segment in &outline.stage_outlines {
+            md.push_str(&format!(
+                "### {}（第 {}-{} 章）\n\n{}\n\n",
+                segment.title,
+                segment.chapter_start + 1,
+                segment.chapter_end + 1,
+                segment.summary
+            ));
+        }
+    }
+
+    if !outline.main_plot_threads.is_empty() {
+        md.push_str("## 主线推进\n\n");
+        for item in &outline.main_plot_threads {
+            md.push_str(&format!("- {}\n", item));
+        }
+        md.push_str("\n");
+    }
+
+    if !outline.key_character_arcs.is_empty() {
+        md.push_str("## 人物线\n\n");
+        for arc in &outline.key_character_arcs {
+            md.push_str(&format!("- **{}**：{}\n", arc.name, arc.arc));
+        }
+        md.push_str("\n");
+    }
+
+    if !outline.major_conflicts.is_empty() {
+        md.push_str("## 主要冲突\n\n");
+        for item in &outline.major_conflicts {
+            md.push_str(&format!("- {}\n", item));
+        }
+        md.push_str("\n");
+    }
+
+    if !outline.setup_payoff_map.is_empty() {
+        md.push_str("## 伏笔与回收\n\n");
+        for item in &outline.setup_payoff_map {
+            md.push_str(&format!("- **铺垫**：{}", item.setup));
+            if let Some(payoff) = &item.payoff {
+                md.push_str(&format!("；**回收**：{}", payoff));
+            }
+            if let Some(chapter_ref) = &item.chapter_ref {
+                md.push_str(&format!("；**章节**：{}", chapter_ref));
+            }
+            md.push('\n');
+        }
+        md.push('\n');
+    }
+
+    md
+}
+
+pub fn generate_chapter_outlines_md(
+    novel: &Novel,
+    chapter_outlines: &[(usize, String, ChapterOutline)],
+) -> String {
+    let mut md = String::new();
+    md.push_str(&format!("# 《{}》章节提纲\n\n", novel.title));
+
+    for (index, title, outline) in chapter_outlines {
+        md.push_str(&format!("## 第 {} 章 {}\n\n", index + 1, title));
+        md.push_str(&outline.brief);
+        md.push_str("\n\n");
+
+        if let Some(goal) = &outline.chapter_goal {
+            md.push_str(&format!("**本章目标**：{}\n\n", goal));
+        }
+
+        if !outline.core_events.is_empty() {
+            md.push_str("**关键推进**：\n");
+            for item in &outline.core_events {
+                md.push_str(&format!("- {}\n", item));
+            }
+            md.push('\n');
+        }
+
+        if !outline.new_characters.is_empty() {
+            md.push_str(&format!(
+                "**新角色**：{}\n\n",
+                outline.new_characters.join("、")
+            ));
+        }
+
+        if !outline.status_changes.is_empty() {
+            md.push_str("**状态变化**：\n");
+            for item in &outline.status_changes {
+                md.push_str(&format!("- {}\n", item));
+            }
+            md.push('\n');
+        }
+
+        if let Some(hook) = &outline.hook {
+            md.push_str(&format!("**章末钩子**：{}\n\n", hook));
+        }
+    }
+
+    md
+}

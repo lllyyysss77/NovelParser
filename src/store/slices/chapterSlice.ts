@@ -30,6 +30,7 @@ export const createChapterSlice: StoreSlice<ChapterSlice> = (set, get) => ({
         try {
             await invoke('delete_chapter', { chapterId });
             await get().fetchChapters(novelId);
+            await get().fetchBookOutline();
             const selected = get().selectedChapter;
             if (selected && selected.id === chapterId) {
                 set({ selectedChapter: null });
@@ -43,6 +44,7 @@ export const createChapterSlice: StoreSlice<ChapterSlice> = (set, get) => ({
         try {
             await invoke('delete_chapters', { chapterIds });
             await get().fetchChapters(novelId);
+            await get().fetchBookOutline();
             const selected = get().selectedChapter;
             if (selected && selected.id && chapterIds.includes(selected.id)) {
                 set({ selectedChapter: null });
@@ -56,6 +58,17 @@ export const createChapterSlice: StoreSlice<ChapterSlice> = (set, get) => ({
         try {
             await invoke('clear_chapter_analysis', { chapterId });
             await get().fetchChapters(novelId);
+            set({ selectedChapter: null });
+        } catch (e) {
+            get().setError(String(e));
+        }
+    },
+
+    clearChapterOutline: async (chapterId, novelId) => {
+        try {
+            await invoke('clear_chapter_outline', { chapterId });
+            await get().fetchChapters(novelId);
+            await get().fetchBookOutline();
             set({ selectedChapter: null });
         } catch (e) {
             get().setError(String(e));

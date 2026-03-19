@@ -28,6 +28,24 @@ export const createEventSlice: StoreSlice<EventSlice> = (set, get) => ({
             }
         });
 
+        await listen<ProgressEvent>('outline_progress', (event) => {
+            const p = event.payload;
+            if (p.status === 'done' || p.status === 'error' || p.status === 'cached') {
+                set({ outlineProgress: null });
+            } else {
+                set({ outlineProgress: p });
+            }
+        });
+
+        await listen<ProgressEvent>('outline_batch_progress', (event) => {
+            const p = event.payload;
+            if (p.status === 'batch_done' || p.status === 'batch_cancelled') {
+                set({ outlineBatchProgress: null, outlineBatchStartTime: null });
+            } else {
+                set({ outlineBatchProgress: p });
+            }
+        });
+
         await listen<StreamingEvent>('analysis_streaming', (event) => {
             const payload = event.payload;
             const current = get().streamContent[payload.chapter_id] || '';
