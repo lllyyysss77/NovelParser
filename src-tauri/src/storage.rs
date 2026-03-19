@@ -1,5 +1,4 @@
 use crate::models::*;
-use crate::token_utils;
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 
@@ -8,6 +7,17 @@ pub struct Database {
 }
 
 impl Database {
+    fn has_chapter_token_count_column(&self) -> Result<bool> {
+        let mut stmt = self.conn.prepare("PRAGMA table_info(chapters)")?;
+        let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for column in columns {
+            if column? == "token_count" {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     pub fn new(app_data_dir: &PathBuf) -> Result<Self> {
         std::fs::create_dir_all(app_data_dir).ok();
         let db_path = app_data_dir.join("novelparser.db");
@@ -37,7 +47,8 @@ impl Database {
                 chapter_index INTEGER NOT NULL,
                 title TEXT NOT NULL DEFAULT '',
                 content TEXT NOT NULL DEFAULT '',
-                analysis TEXT
+                analysis TEXT,
+                token_count INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS novel_summaries (
@@ -92,6 +103,12 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_outline_cache_novel ON outline_cache(novel_id, layer, group_index);
             ",
         )?;
+
+        if !self.has_chapter_token_count_column()? {
+            self.conn
+                .execute("ALTER TABLE chapters ADD COLUMN token_count INTEGER", [])?;
+        }
+
         Ok(())
     }
 
@@ -223,28 +240,58 @@ impl Database {
     }
 
     pub fn list_chapter_metas(&self, novel_id: &str) -> Result<Vec<ChapterMeta>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT c.id, c.chapter_index, c.title, c.analysis, co.chapter_id IS NOT NULL, c.content
-             FROM chapters c
-             LEFT JOIN chapter_outlines co ON co.chapter_id = c.id
-             WHERE c.novel_id = ?1 ORDER BY c.chapter_index",
-        )?;
-        let results = stmt
-            .query_map(params![novel_id], |row| {
-                let analysis_str: Option<String> = row.get(3)?;
-                let has_outline: bool = row.get(4)?;
-                let content: String = row.get(5)?;
-                Ok(ChapterMeta {
-                    id: row.get(0)?,
-                    index: row.get::<_, i64>(1)? as usize,
-                    title: row.get(2)?,
-                    has_analysis: analysis_str.is_some(),
-                    has_outline,
-                    token_estimate: token_utils::estimate_tokens(&content),
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
-        Ok(results)
+        if self.has_chapter_token_count_column()? {
+            let mut stmt = self.conn.prepare(
+                "SELECT c.id, c.chapter_index, c.title, c.analysis, co.chapter_id IS NOT NULL, LENGTH(c.content) as content_len, c.token_count
+                 FROM chapters c
+                 LEFT JOIN chapter_outlines co ON co.chapter_id = c.id
+                 WHERE c.novel_id = ?1 ORDER BY c.chapter_index",
+            )?;
+            let results = stmt
+                .query_map(params![novel_id], |row| {
+                    let analysis_str: Option<String> = row.get(3)?;
+                    let has_outline: bool = row.get(4)?;
+                    let content_len: i64 = row.get(5)?;
+                    let token_count: Option<i64> = row.get(6)?;
+                    Ok(ChapterMeta {
+                        id: row.get(0)?,
+                        index: row.get::<_, i64>(1)? as usize,
+                        title: row.get(2)?,
+                        has_analysis: analysis_str.is_some(),
+                        has_outline,
+                        token_estimate: token_count
+                            .map(|value| value as usize)
+                            .unwrap_or((content_len as f64 * 1.5) as usize),
+                        token_exact: token_count.is_some(),
+                    })
+                })?
+                .collect::<Result<Vec<_>>>()?;
+            Ok(results)
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT c.id, c.chapter_index, c.title, c.analysis, co.chapter_id IS NOT NULL, LENGTH(c.content) as content_len
+                 FROM chapters c
+                 LEFT JOIN chapter_outlines co ON co.chapter_id = c.id
+                 WHERE c.novel_id = ?1 ORDER BY c.chapter_index",
+            )?;
+            let results = stmt
+                .query_map(params![novel_id], |row| {
+                    let analysis_str: Option<String> = row.get(3)?;
+                    let has_outline: bool = row.get(4)?;
+                    let content_len: i64 = row.get(5)?;
+                    Ok(ChapterMeta {
+                        id: row.get(0)?,
+                        index: row.get::<_, i64>(1)? as usize,
+                        title: row.get(2)?,
+                        has_analysis: analysis_str.is_some(),
+                        has_outline,
+                        token_estimate: (content_len as f64 * 1.5) as usize,
+                        token_exact: false,
+                    })
+                })?
+                .collect::<Result<Vec<_>>>()?;
+            Ok(results)
+        }
     }
 
     pub fn load_chapter(&self, chapter_id: i64) -> Result<Chapter> {
@@ -276,6 +323,39 @@ impl Database {
             params![chapter_id],
             |row| row.get(0),
         )
+    }
+
+    pub fn load_chapter_token_count(&self, chapter_id: i64) -> Result<Option<usize>> {
+        if !self.has_chapter_token_count_column()? {
+            return Ok(None);
+        }
+
+        let result = self.conn.query_row(
+            "SELECT token_count FROM chapters WHERE id = ?1",
+            params![chapter_id],
+            |row| row.get::<_, Option<i64>>(0),
+        );
+
+        match result {
+            Ok(Some(count)) => Ok(Some(count as usize)),
+            Ok(None) => Ok(None),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn save_chapter_token_count(&self, chapter_id: i64, token_count: usize) -> Result<()> {
+        if !self.has_chapter_token_count_column()? {
+            self.conn
+                .execute("ALTER TABLE chapters ADD COLUMN token_count INTEGER", [])?;
+        }
+
+        self.conn.execute(
+            "UPDATE chapters SET token_count = ?1 WHERE id = ?2",
+            params![token_count as i64, chapter_id],
+        )?;
+
+        Ok(())
     }
 
     pub fn save_chapter_analysis(&self, chapter_id: i64, analysis: &ChapterAnalysis) -> Result<()> {

@@ -6,6 +6,7 @@ interface VirtualListProps<T> {
     overscan?: number;
     className?: string;
     renderItem: (item: T, index: number) => React.ReactNode;
+    onVisibleItemsChange?: (items: T[], startIndex: number) => void;
 }
 
 export default function VirtualList<T>({
@@ -14,6 +15,7 @@ export default function VirtualList<T>({
     overscan = 6,
     className,
     renderItem,
+    onVisibleItemsChange,
 }: VirtualListProps<T>) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [scrollTop, setScrollTop] = useState(0);
@@ -46,6 +48,10 @@ export default function VirtualList<T>({
             visibleItems: items.slice(startIndex, endIndex),
         };
     }, [itemHeight, items, overscan, scrollTop, viewportHeight]);
+
+    useEffect(() => {
+        onVisibleItemsChange?.(visibleItems, startIndex);
+    }, [onVisibleItemsChange, visibleItems, startIndex]);
 
     return (
         <div

@@ -20,13 +20,14 @@ import { invoke } from '@tauri-apps/api/core';
 export default function NovelPage() {
     const { novelId } = useParams<{ novelId: string }>();
     const [exportAlert, setExportAlert] = useState<{ title: string, msg: string, kind: 'info' | 'error' } | null>(null);
+    const [selectedChapterInputTokens, setSelectedChapterInputTokens] = useState<number | null>(null);
     const {
         currentNovel, chapters, selectedChapter,
         selectNovel, selectChapter, analysisMode, setAnalysisMode,
         analyzeChapterApi, batchAnalyzeNovel, batchAnalyzeChapters, cancelBatch,
         generateChapterOutlineApi, batchGenerateOutlines, batchGenerateOutlineChapters, generateBookOutline, bookOutline,
         fetchBookOutline, clearBookOutline, outliningChapterIds, outlineProgress, outlineBatchProgress, outlineBatchStartTime,
-        deleteChapter, clearChapterAnalysis, clearChapterOutline, analyzingChapterIds, loading, fetchDimensions,
+        deleteChapter, clearChapterAnalysis, clearChapterOutline, analyzingChapterIds, loading, fetchDimensions, hydrateChapterTokenEstimates,
         progress, batchProgress, streamContent, outlineStreamContent, batchStartTime
     } = useNovelStore();
 
@@ -73,6 +74,38 @@ export default function NovelPage() {
             setIsCancelling(false);
         }
     }, [activeBatchProgress?.status]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadExactTokens = async () => {
+            if (!selectedChapter?.id || analysisMode === 'manual') {
+                setSelectedChapterInputTokens(null);
+                return;
+            }
+
+            try {
+                const count = analysisMode === 'outline'
+                    ? await invoke<number>('estimate_outline_prompt_tokens', { chapterId: selectedChapter.id })
+                    : await invoke<number>('estimate_prompt_tokens', {
+                        chapterId: selectedChapter.id,
+                        dimensions: currentNovel?.enabled_dimensions || [],
+                    });
+                if (!cancelled) {
+                    setSelectedChapterInputTokens(count);
+                }
+            } catch {
+                if (!cancelled) {
+                    setSelectedChapterInputTokens(null);
+                }
+            }
+        };
+
+        loadExactTokens();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedChapter?.id, analysisMode, currentNovel?.enabled_dimensions]);
 
     if (!currentNovel) {
         return <div className="flex-1 flex items-center justify-center"><span className="loading loading-spinner loading-lg" /></div>;
@@ -272,7 +305,7 @@ export default function NovelPage() {
                             {analysisMode !== 'manual' && (
                                 <div className="flex-1 space-y-1">
                                     <p className="text-[11px] text-base-content/50">
-                                        预估输入：{selectedBatchTokenEstimate.toLocaleString()} tokens
+                                        粗略预估输入：{selectedBatchTokenEstimate.toLocaleString()} tokens
                                     </p>
                                     <button
                                         className="btn btn-primary btn-sm w-full gap-1"
@@ -337,7 +370,7 @@ export default function NovelPage() {
                     <div className="p-3 border-b border-base-300 bg-base-200/50">
                         <div className="space-y-1">
                             <p className="text-[11px] text-base-content/50">
-                                预估输入：{pendingBatchTokenEstimate.toLocaleString()} tokens
+                                粗略预估输入：{pendingBatchTokenEstimate.toLocaleString()} tokens
                             </p>
                             <button
                                 className={`btn btn-primary btn-sm w-full ${loading ? 'btn-disabled' : ''}`}
@@ -355,6 +388,9 @@ export default function NovelPage() {
                     className="flex-1 overflow-y-auto"
                     items={chapters}
                     itemHeight={84}
+                    onVisibleItemsChange={(visibleItems) => {
+                        void hydrateChapterTokenEstimates(visibleItems.map((item) => item.id));
+                    }}
                     renderItem={(ch) => (
                         <button
                             key={ch.id}
@@ -520,7 +556,7 @@ export default function NovelPage() {
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <p className="text-base-content/60">「{selectedChapter.title}」尚未生成提纲</p>
                         <p className="text-xs text-base-content/50">
-                            预估输入：{selectedChapterTokenEstimate.toLocaleString()} tokens
+                            预估输入：{(selectedChapterInputTokens ?? selectedChapterTokenEstimate).toLocaleString()} tokens
                         </p>
 
                         <button
@@ -571,7 +607,7 @@ export default function NovelPage() {
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <p className="text-base-content/60">「{selectedChapter.title}」尚未分析</p>
                         <p className="text-xs text-base-content/50">
-                            预估输入：{selectedChapterTokenEstimate.toLocaleString()} tokens
+                            预估输入：{(selectedChapterInputTokens ?? selectedChapterTokenEstimate).toLocaleString()} tokens
                         </p>
 
                         <button

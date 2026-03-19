@@ -57,6 +57,14 @@ pub struct ChapterMeta {
     #[serde(default)]
     pub has_outline: bool,
     pub token_estimate: usize,
+    #[serde(default)]
+    pub token_exact: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChapterTokenCount {
+    pub chapter_id: i64,
+    pub token_count: usize,
 }
 
 // ---- Events ----

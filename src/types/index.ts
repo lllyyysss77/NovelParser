@@ -48,6 +48,7 @@ export interface ChapterMeta {
   has_analysis: boolean;
   has_outline: boolean;
   token_estimate: number;
+  token_exact?: boolean;
 }
 
 export interface Chapter {

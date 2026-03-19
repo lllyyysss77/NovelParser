@@ -29,6 +29,7 @@ export interface ChapterSlice {
     selectedChapter: Chapter | null;
     fetchChapters: (novelId: string) => Promise<void>;
     selectChapter: (chapterId: number) => Promise<void>;
+    hydrateChapterTokenEstimates: (chapterIds: number[]) => Promise<void>;
     deleteChapter: (chapterId: number, novelId: string) => Promise<void>;
     deleteChapters: (chapterIds: number[], novelId: string) => Promise<void>;
     clearChapterAnalysis: (chapterId: number, novelId: string) => Promise<void>;

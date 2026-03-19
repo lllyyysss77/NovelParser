@@ -26,6 +26,39 @@ export const createChapterSlice: StoreSlice<ChapterSlice> = (set, get) => ({
         }
     },
 
+    hydrateChapterTokenEstimates: async (chapterIds) => {
+        const pendingIds = chapterIds.filter((id) => {
+            const meta = get().chapters.find((ch) => ch.id === id);
+            return meta && !meta.token_exact;
+        });
+
+        if (pendingIds.length === 0) return;
+
+        try {
+            const updates = await invoke<Array<{ chapter_id: number; token_count: number }>>(
+                'hydrate_chapter_token_estimates',
+                { chapterIds: pendingIds },
+            );
+
+            if (updates.length === 0) return;
+
+            const updateMap = new Map(updates.map((item) => [item.chapter_id, item.token_count]));
+            set({
+                chapters: get().chapters.map((chapter) =>
+                    updateMap.has(chapter.id)
+                        ? {
+                            ...chapter,
+                            token_estimate: updateMap.get(chapter.id)!,
+                            token_exact: true,
+                        }
+                        : chapter,
+                ),
+            });
+        } catch (e) {
+            get().setError(String(e));
+        }
+    },
+
     deleteChapter: async (chapterId, novelId) => {
         try {
             await invoke('delete_chapter', { chapterId });

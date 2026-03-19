@@ -141,6 +141,22 @@ pub async fn generate_chapter_outline(
 }
 
 #[tauri::command]
+pub fn estimate_outline_prompt_tokens(
+    state: State<'_, AppState>,
+    chapter_id: i64,
+) -> Result<usize, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let chapter = db.load_chapter(chapter_id).map_err(|e| e.to_string())?;
+    let config = db.load_llm_config().unwrap_or_default();
+    let prompt_text =
+        crate::prompt::generate_chapter_outline_prompt(&chapter.title, &chapter.content);
+    Ok(crate::token_utils::estimate_tokens_for_model(
+        &prompt_text,
+        &config.model,
+    ))
+}
+
+#[tauri::command]
 pub fn get_chapter_outline(
     state: State<'_, AppState>,
     chapter_id: i64,
