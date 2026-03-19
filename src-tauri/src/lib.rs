@@ -57,6 +57,7 @@ pub fn run() {
             commands::chapter::clear_chapter_outline,
             commands::analysis::generate_prompt,
             commands::analysis::estimate_prompt_tokens,
+            commands::analysis::estimate_text_tokens,
             commands::analysis::parse_manual_result,
             commands::analysis::save_analysis,
             commands::analysis::analyze_chapter_api,

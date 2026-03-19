@@ -27,7 +27,7 @@ export default function NovelPage() {
         generateChapterOutlineApi, batchGenerateOutlines, batchGenerateOutlineChapters, generateBookOutline, bookOutline,
         fetchBookOutline, clearBookOutline, outliningChapterIds, outlineProgress, outlineBatchProgress, outlineBatchStartTime,
         deleteChapter, clearChapterAnalysis, clearChapterOutline, analyzingChapterIds, loading, fetchDimensions,
-        progress, batchProgress, streamContent, batchStartTime
+        progress, batchProgress, streamContent, outlineStreamContent, batchStartTime
     } = useNovelStore();
 
     const hasAnyAnalysis = chapters.some(c => c.has_analysis);
@@ -58,6 +58,15 @@ export default function NovelPage() {
     const completedCount = analysisMode === 'outline'
         ? chapters.filter(c => c.has_outline).length
         : chapters.filter(c => c.has_analysis).length;
+    const selectedChapterTokenEstimate = selectedChapter?.id != null
+        ? chapters.find(c => c.id === selectedChapter.id)?.token_estimate ?? 0
+        : 0;
+    const pendingBatchTokenEstimate = chapters
+        .filter(c => analysisMode === 'outline' ? !c.has_outline : !c.has_analysis)
+        .reduce((sum, c) => sum + c.token_estimate, 0);
+    const selectedBatchTokenEstimate = chapters
+        .filter(c => multiSelectIds.has(c.id))
+        .reduce((sum, c) => sum + c.token_estimate, 0);
 
     useEffect(() => {
         if (!activeBatchProgress || activeBatchProgress.status === 'batch_done' || activeBatchProgress.status === 'batch_cancelled') {
@@ -261,13 +270,18 @@ export default function NovelPage() {
                         </div>
                         <div className="flex gap-2">
                             {analysisMode !== 'manual' && (
-                                <button
-                                    className="btn btn-primary btn-sm flex-1 gap-1"
-                                    onClick={handleBatchSelected}
-                                    disabled={multiSelectIds.size === 0 || loading || !!activeBatchProgress}
-                                >
-                                    <Play size={14} /> {analysisMode === 'outline' ? '批量提纲' : '分析'} ({multiSelectIds.size})
-                                </button>
+                                <div className="flex-1 space-y-1">
+                                    <p className="text-[11px] text-base-content/50">
+                                        预估输入：{selectedBatchTokenEstimate.toLocaleString()} tokens
+                                    </p>
+                                    <button
+                                        className="btn btn-primary btn-sm w-full gap-1"
+                                        onClick={handleBatchSelected}
+                                        disabled={multiSelectIds.size === 0 || loading || !!activeBatchProgress}
+                                    >
+                                        <Play size={14} /> {analysisMode === 'outline' ? '批量提纲' : '分析'} ({multiSelectIds.size})
+                                    </button>
+                                </div>
                             )}
                             <button
                                 className="btn btn-error btn-outline btn-sm flex-none gap-1"
@@ -321,13 +335,18 @@ export default function NovelPage() {
                 {/* Batch all unanalyzed (only when not in multi-select) */}
                 {viewMode === 'chapter' && !multiSelectMode && !activeBatchProgress && (
                     <div className="p-3 border-b border-base-300 bg-base-200/50">
-                        <button
-                            className={`btn btn-primary btn-sm w-full ${loading ? 'btn-disabled' : ''}`}
-                            onClick={() => analysisMode === 'outline' ? batchGenerateOutlines(currentNovel.id) : batchAnalyzeNovel(currentNovel.id)}
-                            disabled={loading || chapters.every(c => analysisMode === 'outline' ? c.has_outline : c.has_analysis)}
-                        >
-                            <Play size={14} /> {analysisMode === 'outline' ? '批量提取未提纲章节' : '批量分析未分析章节'}
-                        </button>
+                        <div className="space-y-1">
+                            <p className="text-[11px] text-base-content/50">
+                                预估输入：{pendingBatchTokenEstimate.toLocaleString()} tokens
+                            </p>
+                            <button
+                                className={`btn btn-primary btn-sm w-full ${loading ? 'btn-disabled' : ''}`}
+                                onClick={() => analysisMode === 'outline' ? batchGenerateOutlines(currentNovel.id) : batchAnalyzeNovel(currentNovel.id)}
+                                disabled={loading || chapters.every(c => analysisMode === 'outline' ? c.has_outline : c.has_analysis)}
+                            >
+                                <Play size={14} /> {analysisMode === 'outline' ? '批量提取未提纲章节' : '批量分析未分析章节'}
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -482,9 +501,7 @@ export default function NovelPage() {
                             </div>
                             <span className="text-xs text-base-content/50">正在提取文本提纲</span>
                         </div>
-                        <div className="flex-1 flex items-center justify-center text-base-content/40">
-                            <p>正在提取该章节的快速提纲...</p>
-                        </div>
+                        <StreamingJsonViewer content={outlineStreamContent[selectedChapter.id!] || ''} />
                     </div>
                 ) : analysisMode === 'outline' && selectedChapter.outline ? (
                     <div className="flex-1 overflow-y-auto p-6">
@@ -502,6 +519,9 @@ export default function NovelPage() {
                 ) : analysisMode === 'outline' ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <p className="text-base-content/60">「{selectedChapter.title}」尚未生成提纲</p>
+                        <p className="text-xs text-base-content/50">
+                            预估输入：{selectedChapterTokenEstimate.toLocaleString()} tokens
+                        </p>
 
                         <button
                             className="btn btn-primary gap-2"
@@ -550,6 +570,9 @@ export default function NovelPage() {
                 ) : analysisMode === 'api' ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <p className="text-base-content/60">「{selectedChapter.title}」尚未分析</p>
+                        <p className="text-xs text-base-content/50">
+                            预估输入：{selectedChapterTokenEstimate.toLocaleString()} tokens
+                        </p>
 
                         <button
                             className={`btn btn-primary gap-2`}

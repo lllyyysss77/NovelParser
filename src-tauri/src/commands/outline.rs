@@ -56,7 +56,8 @@ async fn do_generate_chapter_outline(
         },
     );
 
-    let (_, mut outline) = outline_mod::generate_chapter_outline(&chapter, &config).await?;
+    let (_, mut outline) =
+        outline_mod::generate_chapter_outline(app, &chapter, &config, chapter_id).await?;
     outline.created_at = chrono::Utc::now().to_rfc3339();
 
     {

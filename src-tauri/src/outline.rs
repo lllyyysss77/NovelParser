@@ -105,12 +105,22 @@ pub fn make_outline_groups(nodes: &[OutlineNode], target_tokens: usize) -> Vec<V
 }
 
 pub async fn generate_chapter_outline(
+    app: &tauri::AppHandle,
     chapter: &Chapter,
     config: &LlmConfig,
+    chapter_id: i64,
 ) -> Result<(String, ChapterOutline), String> {
     let content_hash = chapter_content_hash(&chapter.title, &chapter.content);
     let prompt_text = prompt::generate_chapter_outline_prompt(&chapter.title, &chapter.content);
-    let response = llm::call_api(config, &prompt_text, config.chapter_max_tokens).await?;
+    let response = llm::call_api_stream(
+        config,
+        &prompt_text,
+        app,
+        "outline_streaming",
+        chapter_id,
+        config.chapter_max_tokens,
+    )
+    .await?;
     let mut outline = parse_chapter_outline_json(&response)?;
     outline.created_at = chrono::Utc::now().to_rfc3339();
 

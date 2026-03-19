@@ -1,4 +1,5 @@
 use crate::models::*;
+use crate::token_utils;
 use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 
@@ -223,7 +224,7 @@ impl Database {
 
     pub fn list_chapter_metas(&self, novel_id: &str) -> Result<Vec<ChapterMeta>> {
         let mut stmt = self.conn.prepare(
-            "SELECT c.id, c.chapter_index, c.title, c.analysis, co.chapter_id IS NOT NULL, LENGTH(c.content) as content_len
+            "SELECT c.id, c.chapter_index, c.title, c.analysis, co.chapter_id IS NOT NULL, c.content
              FROM chapters c
              LEFT JOIN chapter_outlines co ON co.chapter_id = c.id
              WHERE c.novel_id = ?1 ORDER BY c.chapter_index",
@@ -232,14 +233,14 @@ impl Database {
             .query_map(params![novel_id], |row| {
                 let analysis_str: Option<String> = row.get(3)?;
                 let has_outline: bool = row.get(4)?;
-                let content_len: i64 = row.get(5)?;
+                let content: String = row.get(5)?;
                 Ok(ChapterMeta {
                     id: row.get(0)?,
                     index: row.get::<_, i64>(1)? as usize,
                     title: row.get(2)?,
                     has_analysis: analysis_str.is_some(),
                     has_outline,
-                    token_estimate: (content_len as f64 * 1.5) as usize,
+                    token_estimate: token_utils::estimate_tokens(&content),
                 })
             })?
             .collect::<Result<Vec<_>>>()?;

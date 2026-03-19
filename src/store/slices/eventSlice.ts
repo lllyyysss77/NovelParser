@@ -56,5 +56,16 @@ export const createEventSlice: StoreSlice<EventSlice> = (set, get) => ({
                 }
             });
         });
+
+        await listen<StreamingEvent>('outline_streaming', (event) => {
+            const payload = event.payload;
+            const current = get().outlineStreamContent[payload.chapter_id] || '';
+            set({
+                outlineStreamContent: {
+                    ...get().outlineStreamContent,
+                    [payload.chapter_id]: current + payload.chunk
+                }
+            });
+        });
     },
 });

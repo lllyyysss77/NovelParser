@@ -8,6 +8,7 @@ export const createOutlineSlice: StoreSlice<OutlineSlice> = (set, get) => ({
     outlineBatchProgress: null,
     outlineBatchStartTime: null,
     outliningChapterIds: new Set<number>(),
+    outlineStreamContent: {},
 
     fetchBookOutline: async () => {
         const novelId = get().currentNovel?.id;
@@ -24,13 +25,19 @@ export const createOutlineSlice: StoreSlice<OutlineSlice> = (set, get) => ({
     generateChapterOutlineApi: async (chapterId) => {
         const ids = new Set(get().outliningChapterIds);
         ids.add(chapterId);
-        set({ outliningChapterIds: ids, error: null });
+        set({
+            outliningChapterIds: ids,
+            error: null,
+            outlineStreamContent: { ...get().outlineStreamContent, [chapterId]: '' }
+        });
 
         try {
             const outline = await invoke<ChapterOutline>('generate_chapter_outline', { chapterId });
             const nextIds = new Set(get().outliningChapterIds);
             nextIds.delete(chapterId);
-            set({ outliningChapterIds: nextIds });
+            const nextContent = { ...get().outlineStreamContent };
+            delete nextContent[chapterId];
+            set({ outliningChapterIds: nextIds, outlineStreamContent: nextContent });
 
             const currentNovel = get().currentNovel;
             if (currentNovel) {
@@ -45,7 +52,9 @@ export const createOutlineSlice: StoreSlice<OutlineSlice> = (set, get) => ({
         } catch (e) {
             const nextIds = new Set(get().outliningChapterIds);
             nextIds.delete(chapterId);
-            set({ outliningChapterIds: nextIds });
+            const nextContent = { ...get().outlineStreamContent };
+            delete nextContent[chapterId];
+            set({ outliningChapterIds: nextIds, outlineStreamContent: nextContent });
             get().setError(String(e));
             throw e;
         }

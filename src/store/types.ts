@@ -68,6 +68,7 @@ export interface OutlineSlice {
     outlineBatchProgress: ProgressEvent | null;
     outlineBatchStartTime: number | null;
     outliningChapterIds: Set<number>;
+    outlineStreamContent: Record<number, string>;
     fetchBookOutline: () => Promise<void>;
     generateChapterOutlineApi: (chapterId: number) => Promise<ChapterOutline>;
     batchGenerateOutlines: (novelId: string) => Promise<void>;
