@@ -165,21 +165,13 @@ pub fn get_chapter_outline(
     db.load_chapter_outline(chapter_id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn batch_generate_outlines(
+async fn run_batch_outline_generation(
     app: tauri::AppHandle,
-    state: State<'_, AppState>,
+    state: &State<'_, AppState>,
     novel_id: String,
+    metas: Vec<ChapterMeta>,
+    concurrency: usize,
 ) -> Result<(), String> {
-    let (metas, concurrency) = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
-        let metas = db
-            .list_chapter_metas(&novel_id)
-            .map_err(|e| e.to_string())?;
-        let config = db.load_llm_config().map_err(|e| e.to_string())?;
-        (metas, config.max_concurrent_tasks.max(1) as usize)
-    };
-
     let total = metas.len();
     if total == 0 {
         return Ok(());
@@ -189,13 +181,18 @@ pub async fn batch_generate_outlines(
     let completed = Arc::new(AtomicUsize::new(0));
     let failed = Arc::new(AtomicUsize::new(0));
 
-    let mut tasks = futures::stream::iter(metas.into_iter().map(|meta| {
-        let app = app.clone();
-        let novel_id = novel_id.clone();
+    let app_for_tasks = app.clone();
+    let novel_id_for_tasks = novel_id.clone();
+    let completed_for_tasks = completed.clone();
+    let failed_for_tasks = failed.clone();
+
+    let mut tasks = futures::stream::iter(metas.into_iter().map(move |meta| {
+        let app = app_for_tasks.clone();
+        let novel_id = novel_id_for_tasks.clone();
         let db = &state.db;
         let cancel_flag = &state.batch_cancel;
-        let completed = completed.clone();
-        let failed = failed.clone();
+        let completed = completed_for_tasks.clone();
+        let failed = failed_for_tasks.clone();
 
         async move {
             if cancel_flag.load(Ordering::Relaxed) {
@@ -279,11 +276,10 @@ pub async fn batch_generate_outlines(
         "章节提纲生成完成".to_string()
     };
 
-    let done_novel_id = novel_id.clone();
     let _ = app.emit(
         "outline_batch_progress",
         ProgressEvent {
-            novel_id: done_novel_id,
+            novel_id,
             chapter_id: None,
             status: "batch_done".to_string(),
             current: total,
@@ -293,6 +289,24 @@ pub async fn batch_generate_outlines(
     );
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn batch_generate_outlines(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    novel_id: String,
+) -> Result<(), String> {
+    let (metas, concurrency) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let metas = db
+            .list_chapter_metas(&novel_id)
+            .map_err(|e| e.to_string())?;
+        let config = db.load_llm_config().map_err(|e| e.to_string())?;
+        (metas, config.max_concurrent_tasks.max(1) as usize)
+    };
+
+    run_batch_outline_generation(app, &state, novel_id, metas, concurrency).await
 }
 
 #[tauri::command]
@@ -315,119 +329,7 @@ pub async fn batch_generate_outline_chapters(
         (metas, config.max_concurrent_tasks.max(1) as usize)
     };
 
-    let total = metas.len();
-    if total == 0 {
-        return Ok(());
-    }
-
-    state.batch_cancel.store(false, Ordering::Relaxed);
-    let completed = Arc::new(AtomicUsize::new(0));
-    let failed = Arc::new(AtomicUsize::new(0));
-
-    let mut tasks = futures::stream::iter(metas.into_iter().map(|meta| {
-        let app = app.clone();
-        let novel_id = novel_id.clone();
-        let db = &state.db;
-        let cancel_flag = &state.batch_cancel;
-        let completed = completed.clone();
-        let failed = failed.clone();
-
-        async move {
-            if cancel_flag.load(Ordering::Relaxed) {
-                return Ok::<bool, String>(true);
-            }
-
-            let current = completed.load(Ordering::Relaxed);
-            let _ = app.emit(
-                "outline_batch_progress",
-                ProgressEvent {
-                    novel_id: novel_id.clone(),
-                    chapter_id: Some(meta.id),
-                    status: "batch_outlining".to_string(),
-                    current,
-                    total,
-                    message: format!("正在处理: {} ({}/{})", meta.title, current, total),
-                },
-            );
-
-            match do_generate_chapter_outline(&app, db, meta.id).await {
-                Ok(_) => {
-                    let next = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                    let _ = app.emit(
-                        "outline_batch_progress",
-                        ProgressEvent {
-                            novel_id,
-                            chapter_id: Some(meta.id),
-                            status: "chapter_done".to_string(),
-                            current: next,
-                            total,
-                            message: format!("已完成: {} ({}/{})", meta.title, next, total),
-                        },
-                    );
-                }
-                Err(err) => {
-                    failed.fetch_add(1, Ordering::Relaxed);
-                    let current = completed.load(Ordering::Relaxed);
-                    let _ = app.emit(
-                        "outline_batch_progress",
-                        ProgressEvent {
-                            novel_id,
-                            chapter_id: Some(meta.id),
-                            status: "error".to_string(),
-                            current,
-                            total,
-                            message: format!("提纲生成失败 {}: {}", meta.title, err),
-                        },
-                    );
-                }
-            }
-
-            Ok(false)
-        }
-    }))
-    .buffer_unordered(concurrency);
-
-    while let Some(result) = tasks.next().await {
-        if let Ok(true) = result {
-            state.batch_cancel.store(false, Ordering::Relaxed);
-            let current = completed.load(Ordering::Relaxed);
-            let _ = app.emit(
-                "outline_batch_progress",
-                ProgressEvent {
-                    novel_id: novel_id.clone(),
-                    chapter_id: None,
-                    status: "batch_cancelled".to_string(),
-                    current,
-                    total,
-                    message: format!("提纲批处理已取消 ({}/{})", current, total),
-                },
-            );
-            return Ok(());
-        }
-    }
-
-    let success_count = completed.load(Ordering::Relaxed);
-    let fail_count = failed.load(Ordering::Relaxed);
-    let done_message = if fail_count > 0 {
-        format!("章节提纲生成完成：成功 {}，失败 {}", success_count, fail_count)
-    } else {
-        "章节提纲生成完成".to_string()
-    };
-
-    let done_novel_id = novel_id.clone();
-    let _ = app.emit(
-        "outline_batch_progress",
-        ProgressEvent {
-            novel_id: done_novel_id,
-            chapter_id: None,
-            status: "batch_done".to_string(),
-            current: total,
-            total,
-            message: done_message,
-        },
-    );
-
-    Ok(())
+    run_batch_outline_generation(app, &state, novel_id, metas, concurrency).await
 }
 
 #[tauri::command]

@@ -64,6 +64,10 @@ pub fn calculate_available_request_tokens(config: &LlmConfig, max_output: Option
         .unwrap_or(8192) as usize;
     (config.max_context_tokens as usize).saturating_sub(output_reserve)
 }
+/// Split text content into segments that fit within a token limit.
+pub fn split_content_by_tokens(content: &str, max_tokens: usize) -> Vec<String> {
+    split_content_by_tokens_for_model(content, max_tokens, DEFAULT_TOKENIZER_MODEL)
+}
 
 pub fn split_content_by_tokens_for_model(
     content: &str,
