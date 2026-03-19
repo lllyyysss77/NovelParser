@@ -299,15 +299,24 @@ pub fn generate_chapter_md(ch: &Chapter) -> String {
 pub fn generate_book_outline_md(novel: &Novel, outline: &BookOutline) -> String {
     let mut md = String::new();
     md.push_str(&format!("# 《{}》快速提纲\n\n", novel.title));
-    md.push_str("## 整体概览\n\n");
-    md.push_str(&outline.overview);
+    md.push_str("## 一句话梗概\n\n");
+    md.push_str(&outline.logline);
     md.push_str("\n\n");
 
-    if !outline.stage_outlines.is_empty() {
-        md.push_str("## 阶段大纲\n\n");
-        for segment in &outline.stage_outlines {
+    md.push_str("## 故事大纲\n\n");
+    md.push_str(&outline.story_outline);
+    md.push_str("\n\n");
+
+    md.push_str("## 世界观设定\n\n");
+    md.push_str(&outline.world_setting);
+    md.push_str("\n\n");
+
+    if !outline.volumes.is_empty() {
+        md.push_str("## 分卷\n\n");
+        for segment in &outline.volumes {
             md.push_str(&format!(
-                "### {}（第 {}-{} 章）\n\n{}\n\n",
+                "### 第 {} 卷 {}（第 {}-{} 章）\n\n{}\n\n",
+                segment.volume_number,
                 segment.title,
                 segment.chapter_start + 1,
                 segment.chapter_end + 1,
@@ -316,43 +325,36 @@ pub fn generate_book_outline_md(novel: &Novel, outline: &BookOutline) -> String 
         }
     }
 
-    if !outline.main_plot_threads.is_empty() {
-        md.push_str("## 主线推进\n\n");
-        for item in &outline.main_plot_threads {
-            md.push_str(&format!("- {}\n", item));
-        }
-        md.push_str("\n");
-    }
-
-    if !outline.key_character_arcs.is_empty() {
-        md.push_str("## 人物线\n\n");
-        for arc in &outline.key_character_arcs {
-            md.push_str(&format!("- **{}**：{}\n", arc.name, arc.arc));
-        }
-        md.push_str("\n");
-    }
-
-    if !outline.major_conflicts.is_empty() {
-        md.push_str("## 主要冲突\n\n");
-        for item in &outline.major_conflicts {
-            md.push_str(&format!("- {}\n", item));
-        }
-        md.push_str("\n");
-    }
-
-    if !outline.setup_payoff_map.is_empty() {
-        md.push_str("## 伏笔与回收\n\n");
-        for item in &outline.setup_payoff_map {
-            md.push_str(&format!("- **铺垫**：{}", item.setup));
-            if let Some(payoff) = &item.payoff {
-                md.push_str(&format!("；**回收**：{}", payoff));
+    if !outline.character_cards.is_empty() {
+        md.push_str("## 角色卡\n\n");
+        for card in &outline.character_cards {
+            md.push_str(&format!("### {}\n\n", card.name));
+            md.push_str(&format!("- 生命周期：{}\n", card.lifecycle));
+            if let (Some(first), Some(last)) = (card.first_volume, card.last_volume) {
+                md.push_str(&format!("- 卷数范围：第 {} 卷 - 第 {} 卷\n", first, last));
             }
-            if let Some(chapter_ref) = &item.chapter_ref {
-                md.push_str(&format!("；**章节**：{}", chapter_ref));
+            md.push_str(&format!("- 角色类型：{}\n", card.character_type));
+            if !card.key_scenes.is_empty() {
+                md.push_str(&format!("- 出场/常驻场景：{}\n", card.key_scenes.join("、")));
             }
-            md.push('\n');
+            md.push_str(&format!("- 描述：{}\n", card.description));
+            md.push_str(&format!("- 性格：{}\n", card.personality));
+            md.push_str(&format!("- 核心驱动力：{}\n", card.core_drive));
+            md.push_str(&format!("- 角色弧光：{}\n\n", card.arc));
         }
-        md.push('\n');
+    }
+
+    if !outline.scene_cards.is_empty() {
+        md.push_str("## 场景卡\n\n");
+        for card in &outline.scene_cards {
+            md.push_str(&format!("### {}\n\n", card.name));
+            md.push_str(&format!("- 生命周期：{}\n", card.lifecycle));
+            if let (Some(first), Some(last)) = (card.first_volume, card.last_volume) {
+                md.push_str(&format!("- 卷数范围：第 {} 卷 - 第 {} 卷\n", first, last));
+            }
+            md.push_str(&format!("- 描述：{}\n", card.description));
+            md.push_str(&format!("- 在剧情中的作用：{}\n\n", card.story_function));
+        }
     }
 
     md

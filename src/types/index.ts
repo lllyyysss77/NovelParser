@@ -199,30 +199,42 @@ export interface ChapterOutline {
 
 export interface OutlineSegment {
   title: string;
+  volume_number: number;
   chapter_start: number;
   chapter_end: number;
   summary: string;
 }
 
-export interface OutlineCharacterArc {
+export interface CharacterCard {
   name: string;
+  lifecycle: string;
+  first_volume?: number | null;
+  last_volume?: number | null;
+  character_type: string;
+  key_scenes: string[];
+  description: string;
+  personality: string;
+  core_drive: string;
   arc: string;
 }
 
-export interface SetupPayoff {
-  setup: string;
-  payoff?: string | null;
-  chapter_ref?: string | null;
+export interface SceneCard {
+  name: string;
+  lifecycle: string;
+  first_volume?: number | null;
+  last_volume?: number | null;
+  description: string;
+  story_function: string;
 }
 
 export interface BookOutline {
   created_at: string;
-  overview: string;
-  stage_outlines: OutlineSegment[];
-  main_plot_threads: string[];
-  key_character_arcs: OutlineCharacterArc[];
-  major_conflicts: string[];
-  setup_payoff_map: SetupPayoff[];
+  logline: string;
+  story_outline: string;
+  world_setting: string;
+  volumes: OutlineSegment[];
+  character_cards: CharacterCard[];
+  scene_cards: SceneCard[];
 }
 
 // ---- LLM Config ----

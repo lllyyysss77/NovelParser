@@ -402,24 +402,46 @@ pub struct ChapterOutline {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OutlineSegment {
     pub title: String,
+    #[serde(default)]
+    pub volume_number: usize,
     pub chapter_start: usize,
     pub chapter_end: usize,
     pub summary: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct OutlineCharacterArc {
+pub struct CharacterCard {
     pub name: String,
+    pub lifecycle: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_volume: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_volume: Option<usize>,
+    pub character_type: String,
+    #[serde(default)]
+    pub key_scenes: Vec<String>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub personality: String,
+    #[serde(default)]
+    pub core_drive: String,
+    #[serde(default)]
     pub arc: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SetupPayoff {
-    pub setup: String,
+pub struct SceneCard {
+    pub name: String,
+    pub lifecycle: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub payoff: Option<String>,
+    pub first_volume: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub chapter_ref: Option<String>,
+    pub last_volume: Option<usize>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub story_function: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -427,17 +449,17 @@ pub struct BookOutline {
     #[serde(default = "default_created_at")]
     pub created_at: String,
     #[serde(default)]
-    pub overview: String,
+    pub logline: String,
     #[serde(default)]
-    pub stage_outlines: Vec<OutlineSegment>,
+    pub story_outline: String,
     #[serde(default)]
-    pub main_plot_threads: Vec<String>,
+    pub world_setting: String,
     #[serde(default)]
-    pub key_character_arcs: Vec<OutlineCharacterArc>,
+    pub volumes: Vec<OutlineSegment>,
     #[serde(default)]
-    pub major_conflicts: Vec<String>,
+    pub character_cards: Vec<CharacterCard>,
     #[serde(default)]
-    pub setup_payoff_map: Vec<SetupPayoff>,
+    pub scene_cards: Vec<SceneCard>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

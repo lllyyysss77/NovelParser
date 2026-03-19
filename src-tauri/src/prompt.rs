@@ -161,15 +161,17 @@ pub fn generate_chapter_outline_prompt(title: &str, content: &str) -> String {
     let mut prompt = String::new();
 
     prompt.push_str("你是一位擅长长篇小说结构拆解的编辑助手。\n");
-    prompt.push_str("请从以下章节中提取【快速提纲】，供后续全书归并使用，不做文学评论。\n");
-    prompt.push_str("只保留剧情推进、人物状态变化、冲突转折和下一步线索，绝不脑补，绝不引用原文。\n");
+    prompt.push_str("请从以下章节中提取【情节提纲】，供阅读和后续归并使用，不做文学评论。\n");
+    prompt.push_str("你只需要关心情节本身：事情按什么顺序发生、局面如何变化、这一章把故事推进到了哪里。\n");
     prompt.push_str("请严格返回 JSON，不要输出任何额外说明。\n\n");
 
     prompt.push_str("## 提取规则\n");
-    prompt.push_str("1. brief 控制在 60~100 字，只写本章最核心推进。\n");
-    prompt.push_str("2. detail 写成一段连续文本，建议 120~220 字，按“发生了什么 -> 为什么重要 -> 给后文留下什么”组织。\n");
-    prompt.push_str("3. 只保留会影响后文的事实：目标变化、关系变化、身份暴露、阵营变化、伤亡、地点迁移、任务推进、明确悬念。\n");
-    prompt.push_str("4. 不要列点，不要分栏，不要评价写法，不要补充文中未出现的信息。\n\n");
+    prompt.push_str("1. brief 控制在 50~80 字，只写本章最核心的剧情推进。\n");
+    prompt.push_str("2. detail 写成一段连续文本，建议 150~260 字，按事件发生顺序概括本章情节。\n");
+    prompt.push_str("3. 重点写清：起点局面、关键事件、转折、结尾局面。\n");
+    prompt.push_str("4. 人名、地名、组织名、关键场景若会影响后续理解，可以直接写进提纲正文。\n");
+    prompt.push_str("5. 不要分析主题、人物塑造、伏笔、修辞、写法，不要脑补未写出的因果。\n");
+    prompt.push_str("6. detail 必须像给人看的章节提纲，而不是标签堆砌或信息清单。\n\n");
 
     prompt.push_str(&format!("## 章节：{}\n\n", title));
     prompt.push_str(content);
@@ -190,9 +192,12 @@ pub fn generate_outline_group_prompt(
 ) -> String {
     let mut prompt = String::new();
 
-    prompt.push_str("你是一位长篇小说结构编辑。下面给出若干连续章节或阶段节点的提纲。\n");
-    prompt.push_str("请将它们归并为更高层级的大纲，只保留主线推进、人物线变化、冲突变化和关键伏笔回收。\n");
-    prompt.push_str("避免重复，不要复述所有细节，不要做文学评论，不要引用原文。\n");
+    prompt.push_str("你是一位长篇小说结构编辑。下面给出若干连续章节或阶段节点的情节提纲。\n");
+    prompt.push_str("请将它们归并为一份【全书提纲册】或【阶段提纲册】，服务于读者快速把握作品全貌。\n");
+    prompt.push_str("重点抽取：一句话梗概、故事大纲、世界观设定、分卷信息、角色卡、场景卡。\n");
+    prompt.push_str("不要做文学评论，不要引用原文，不要凭空补设定。对于无法确认的信息留空或省略。\n");
+    prompt.push_str("只有在作品本身存在明显且自然的分卷结构时才返回 volumes；如果没有分卷概念，volumes 返回空数组，不要为了分卷而硬分。\n");
+    prompt.push_str("角色卡和场景卡只保留真正影响主线或单卷结构的重要对象，不要把路人或一次性背景地点全都列进去。\n\n");
     prompt.push_str("请严格返回 JSON。\n\n");
 
     prompt.push_str(&format!("## 当前归并层级：第 {} 层\n\n", layer));
@@ -212,19 +217,42 @@ pub fn generate_outline_group_prompt(
     prompt.push_str("## 输出 JSON 结构\n");
     prompt.push_str(
         r#"{
-  "overview": "该阶段的整体推进概述，120~220字",
-  "stage_outlines": [
+  "logline": "一句话梗概，40~80字",
+  "story_outline": "完整故事大纲，300~800字，按剧情推进顺序组织",
+  "world_setting": "世界观设定说明；若现实向且设定不突出，可简要说明时代、地域、势力、规则",
+  "volumes": [
     {
-      "title": "阶段标题",
+      "title": "卷标题",
+      "volume_number": 1,
       "chapter_start": 0,
       "chapter_end": 9,
-      "summary": "该子阶段的推进"
+      "summary": "这一卷的核心剧情推进"
     }
   ],
-  "main_plot_threads": ["主线推进1"],
-  "key_character_arcs": [{"name": "人物名", "arc": "这一阶段的人物变化"}],
-  "major_conflicts": ["冲突变化1"],
-  "setup_payoff_map": [{"setup": "铺垫", "payoff": "回收或null", "chapter_ref": "第X章或null"}]
+  "character_cards": [
+    {
+      "name": "角色名",
+      "lifecycle": "长期或短期",
+      "first_volume": 1,
+      "last_volume": 3,
+      "character_type": "主角",
+      "key_scenes": ["场景A", "场景B"],
+      "description": "一句话介绍/背景与关系概述",
+      "personality": "性格概括",
+      "core_drive": "核心驱动力",
+      "arc": "角色弧光"
+    }
+  ],
+  "scene_cards": [
+    {
+      "name": "场景名",
+      "lifecycle": "长期或短期",
+      "first_volume": 1,
+      "last_volume": 2,
+      "description": "场景/地图一句话简介",
+      "story_function": "在剧情中的作用"
+    }
+  ]
 }"#,
     );
 
