@@ -5,7 +5,7 @@ use crate::AppState;
 use futures::StreamExt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, State};
+use tauri::{Emitter, State, Manager};
 
 async fn do_generate_chapter_outline(
     http_client: &reqwest::Client,
@@ -360,13 +360,9 @@ pub async fn generate_book_outline(
     state: State<'_, AppState>,
     novel_id: String,
 ) -> Result<BookOutline, String> {
-    let (chapter_outlines, config) = {
+    let chapter_outlines = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
-        let chapter_outlines = db
-            .list_chapter_outlines(&novel_id)
-            .map_err(|e| e.to_string())?;
-        let config = db.load_llm_config().map_err(|e| e.to_string())?;
-        (chapter_outlines, config)
+        db.list_chapter_outlines(&novel_id).map_err(|e| e.to_string())?
     };
 
     if chapter_outlines.is_empty() {
@@ -394,6 +390,23 @@ pub async fn generate_book_outline(
         }
     }
 
+    let mut nodes = chapter_outlines
+        .into_iter()
+        .map(|(_, index, _, hash, outline)| outline_mod::OutlineNode::from_chapter(index, &outline, hash))
+        .collect::<Vec<_>>();
+
+    let (max_context_tokens, max_concurrent_tasks, summary_max_tokens) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let config = db.load_llm_config().map_err(|e| e.to_string())?;
+        (config.max_context_tokens, config.max_concurrent_tasks, config.summary_max_tokens)
+    };
+
+    let total_initial_tokens: usize = nodes.iter().map(|n| n.token_estimate).sum();
+    // 如果总 Token 数小于模型上下文的 80%，直接进行单次归并（Direct Mode）
+    let context_limit = (max_context_tokens as f64 * 0.8) as usize;
+    
+    let is_direct_mode = total_initial_tokens < context_limit && nodes.len() > 1;
+
     let _ = app.emit(
         "outline_progress",
         ProgressEvent {
@@ -402,106 +415,112 @@ pub async fn generate_book_outline(
             status: "summarizing".to_string(),
             current: 0,
             total: 1,
-            message: "正在准备归并章节提纲...".to_string(),
+            message: if is_direct_mode { "模型上下文足够，正在进行直接归并..." } else { "正在准备分层归并章节提纲..." }.to_string(),
         },
     );
 
-    let mut nodes = chapter_outlines
-        .into_iter()
-        .map(|(_, index, _, hash, outline)| outline_mod::OutlineNode::from_chapter(index, &outline, hash))
-        .collect::<Vec<_>>();
-
     let mut layer = 1i32;
     let mut final_outline: Option<BookOutline> = None;
+    let concurrency = max_concurrent_tasks.max(1) as usize;
 
     while final_outline.is_none() {
-        let target_tokens = if layer == 1 { 6000 } else { 8000 };
-        let groups = if nodes.len() == 1 {
-            vec![nodes.clone()]
+        let (groups, _target_tokens) = if is_direct_mode || nodes.len() <= 1 {
+            (vec![nodes.clone()], 0)
         } else {
-            outline_mod::make_outline_groups(&nodes, target_tokens)
+            let target = if layer == 1 { 6000 } else { 8000 };
+            (outline_mod::make_outline_groups(&nodes, target), target)
         };
 
         let total_groups = groups.len();
         let mut next_nodes = Vec::with_capacity(total_groups);
 
-        for (group_index, group) in groups.iter().enumerate() {
-            let _ = app.emit(
-                "outline_progress",
-                ProgressEvent {
-                    novel_id: novel_id.clone(),
-                    chapter_id: None,
-                    status: "summarizing".to_string(),
-                    current: group_index + 1,
-                    total: total_groups,
-                    message: format!("正在归并第 {} 层 ({}/{})", layer, group_index + 1, total_groups),
-                },
-            );
+        {
+            let current_layer = layer;
+            let novel_id_clone = novel_id.clone();
+            let app_clone = app.clone();
+            let http_client = state.http_client.clone();
+            
+            let mut stream = futures::stream::iter(groups.into_iter().enumerate().map(move |(group_index, group)| {
+                let app = app_clone.clone();
+                let novel_id = novel_id_clone.clone();
+                let http_client = http_client.clone();
+                let layer = current_layer;
+                let total_groups = total_groups;
+                let sm_max_tokens = summary_max_tokens;
 
-            let group_hash = outline_mod::combined_hash(
-                &group
-                    .iter()
-                    .map(|node| node.content_hash.clone())
-                    .collect::<Vec<_>>(),
-            );
-
-            let cached = {
-                let db = state.db.lock().map_err(|e| e.to_string())?;
-                db.load_outline_cache(&novel_id, layer, group_index as i32)
-                    .map_err(|e| e.to_string())?
-            };
-
-            let group_outline = if let Some(cache) = cached {
-                if cache.content_hash == group_hash {
-                    cache.outline
-                } else {
-                    let prompt_text =
-                        crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(group), layer as usize);
-                    let response =
-                        crate::llm::call_api(&state.http_client, &config, &prompt_text, config.summary_max_tokens).await?;
-                    let mut outline = outline_mod::parse_book_outline_json(&response)?;
-                    outline.created_at = chrono::Utc::now().to_rfc3339();
-                    let (entry, _) = promote_group_to_node(
-                        &novel_id,
-                        layer,
-                        group_index as i32,
-                        group,
-                        &outline,
+                async move {
+                    let _ = app.emit(
+                        "outline_progress",
+                        ProgressEvent {
+                            novel_id: novel_id.clone(),
+                            chapter_id: None,
+                            status: "summarizing".to_string(),
+                            current: group_index + 1,
+                            total: total_groups,
+                            message: format!("正在归并第 {} 层 ({}/{})", layer, group_index + 1, total_groups),
+                        },
                     );
-                    let db = state.db.lock().map_err(|e| e.to_string())?;
-                    db.save_outline_cache(&novel_id, &entry)
-                        .map_err(|e| e.to_string())?;
-                    outline
-                }
-            } else {
-                let prompt_text =
-                    crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(group), layer as usize);
-                let response =
-                    crate::llm::call_api(&state.http_client, &config, &prompt_text, config.summary_max_tokens).await?;
-                let mut outline = outline_mod::parse_book_outline_json(&response)?;
-                outline.created_at = chrono::Utc::now().to_rfc3339();
-                let (entry, _) = promote_group_to_node(
-                    &novel_id,
-                    layer,
-                    group_index as i32,
-                    group,
-                    &outline,
-                );
-                let db = state.db.lock().map_err(|e| e.to_string())?;
-                db.save_outline_cache(&novel_id, &entry)
-                    .map_err(|e| e.to_string())?;
-                outline
-            };
 
-            let (_, next_node) = promote_group_to_node(
-                &novel_id,
-                layer,
-                group_index as i32,
-                group,
-                &group_outline,
-            );
-            next_nodes.push(next_node);
-        }
+                    let group_hash = outline_mod::combined_hash(
+                        &group
+                            .iter()
+                            .map(|node| node.content_hash.clone())
+                            .collect::<Vec<_>>(),
+                    );
+
+                    // 首先获取配置和检查缓存，不持有锁跨 await
+                    let (config, cached) = {
+                        let st = app.state::<AppState>();
+                        let db = st.db.lock().map_err(|e| e.to_string())?;
+                        let config = db.load_llm_config().map_err(|e| e.to_string())?;
+                        let cached = db.load_outline_cache(&novel_id, layer, group_index as i32)
+                            .map_err(|e| e.to_string())?;
+                        (config, cached)
+                    };
+
+                    let group_outline = if let Some(cache) = cached {
+                        if cache.content_hash == group_hash {
+                            cache.outline
+                        } else {
+                            let prompt_text = crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(&group), layer as usize);
+                            let response = crate::llm::call_api(&http_client, &config, &prompt_text, sm_max_tokens).await?;
+                            let mut outline = outline_mod::parse_book_outline_json(&response)?;
+                            outline.created_at = chrono::Utc::now().to_rfc3339();
+                            
+                            // 更新缓存
+                            let (entry, _) = promote_group_to_node(&novel_id, layer, group_index as i32, &group, &outline);
+                            let st = app.state::<AppState>();
+                            let db = st.db.lock().map_err(|e| e.to_string())?;
+                            db.save_outline_cache(&novel_id, &entry).map_err(|e| e.to_string())?;
+                            
+                            outline
+                        }
+                    } else {
+                        let prompt_text = crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(&group), layer as usize);
+                        let response = crate::llm::call_api(&http_client, &config, &prompt_text, sm_max_tokens).await?;
+                        let mut outline = outline_mod::parse_book_outline_json(&response)?;
+                        outline.created_at = chrono::Utc::now().to_rfc3339();
+                        
+                        // 更新缓存
+                        let (entry, _) = promote_group_to_node(&novel_id, layer, group_index as i32, &group, &outline);
+                        let st = app.state::<AppState>();
+                        let db = st.db.lock().map_err(|e| e.to_string())?;
+                        db.save_outline_cache(&novel_id, &entry).map_err(|e| e.to_string())?;
+                        
+                        outline
+                    };
+
+                    let (_, updated_next_node) = promote_group_to_node(&novel_id, layer, group_index as i32, &group, &group_outline);
+
+                    Ok::<(outline_mod::OutlineNode, BookOutline), String>((updated_next_node, group_outline))
+                }
+            })).buffered(concurrency);
+            
+            while let Some(res) = stream.next().await {
+                let (next_node, _) = res?;
+                next_nodes.push(next_node);
+            }
+        } 
 
         if next_nodes.len() == 1 {
             let mut outline = outline_mod::parse_book_outline_json(&next_nodes[0].content)?;
@@ -511,12 +530,10 @@ pub async fn generate_book_outline(
                 .map_err(|e| e.to_string())?;
             final_outline = Some(outline);
         } else {
-            // 安全检查：如果归并后节点数没有减少且节点数依然大于1，说明模型输出太长或者 target_tokens 太小，会导致死循环
             if next_nodes.len() >= nodes.len() {
-                return Err(format!("全书提纲归并停辞：第 {} 层归并后节点数（{}）未能减少。这通常是因为内容过长，请尝试在设置中减小摘要最大 Token 数或增加上下文限制。", layer, next_nodes.len()));
+                 return Err(format!("全书提纲归并停滞：第 {} 层归并后节点数（{}）未能减少。这通常是因为内容过长，请尝试在设置中增加上下文限制或更换更强大的模型。", layer, next_nodes.len()));
             }
             nodes = next_nodes;
-
             layer += 1;
         }
     }
