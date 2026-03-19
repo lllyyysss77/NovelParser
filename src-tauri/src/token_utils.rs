@@ -3,10 +3,6 @@ use tiktoken_rs::{o200k_base_singleton, CoreBPE};
 
 const DEFAULT_TOKENIZER_MODEL: &str = "gpt-4o";
 
-fn fallback_bpe_for_model(_model: &str) -> &'static CoreBPE {
-    o200k_base_singleton()
-}
-
 fn encoder_for_model(_model: &str) -> std::borrow::Cow<'static, CoreBPE> {
     std::borrow::Cow::Borrowed(o200k_base_singleton())
 }

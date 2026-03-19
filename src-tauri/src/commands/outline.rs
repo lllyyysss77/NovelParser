@@ -478,23 +478,8 @@ pub async fn generate_book_outline(
                         (config, cached)
                     };
 
-                    let group_outline = if let Some(cache) = cached {
-                        if cache.content_hash == group_hash {
-                            cache.outline
-                        } else {
-                            let prompt_text = crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(&group), layer as usize);
-                            let response = crate::llm::call_api(&http_client, &config, &prompt_text, sm_max_tokens).await?;
-                            let mut outline = outline_mod::parse_book_outline_json(&response)?;
-                            outline.created_at = chrono::Utc::now().to_rfc3339();
-                            
-                            // 更新缓存
-                            let (entry, _) = promote_group_to_node(&novel_id, layer, group_index as i32, &group, &outline);
-                            let st = app.state::<AppState>();
-                            let db = st.db.lock().map_err(|e| e.to_string())?;
-                            db.save_outline_cache(&novel_id, &entry).map_err(|e| e.to_string())?;
-                            
-                            outline
-                        }
+                    let group_outline = if let Some(cache) = cached.filter(|c| c.content_hash == group_hash) {
+                        cache.outline
                     } else {
                         let prompt_text = crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(&group), layer as usize);
                         let response = crate::llm::call_api(&http_client, &config, &prompt_text, sm_max_tokens).await?;
