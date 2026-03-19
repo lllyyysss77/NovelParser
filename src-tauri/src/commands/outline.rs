@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, State};
 
 async fn do_generate_chapter_outline(
+    http_client: &reqwest::Client,
     app: &tauri::AppHandle,
     db_mutex: &Mutex<Database>,
     chapter_id: i64,
@@ -57,7 +58,7 @@ async fn do_generate_chapter_outline(
     );
 
     let (_, mut outline) =
-        outline_mod::generate_chapter_outline(app, &chapter, &config, chapter_id).await?;
+        outline_mod::generate_chapter_outline(http_client, app, &chapter, &config, chapter_id).await?;
     outline.created_at = chrono::Utc::now().to_rfc3339();
 
     {
@@ -137,7 +138,7 @@ pub async fn generate_chapter_outline(
     state: State<'_, AppState>,
     chapter_id: i64,
 ) -> Result<ChapterOutline, String> {
-    do_generate_chapter_outline(&app, &state.db, chapter_id).await
+    do_generate_chapter_outline(&state.http_client, &app, &state.db, chapter_id).await
 }
 
 #[tauri::command]
@@ -166,6 +167,7 @@ pub fn get_chapter_outline(
 }
 
 async fn run_batch_outline_generation(
+    http_client: reqwest::Client,
     app: tauri::AppHandle,
     state: &State<'_, AppState>,
     novel_id: String,
@@ -187,6 +189,7 @@ async fn run_batch_outline_generation(
     let failed_for_tasks = failed.clone();
 
     let mut tasks = futures::stream::iter(metas.into_iter().map(move |meta| {
+        let http_client = http_client.clone();
         let app = app_for_tasks.clone();
         let novel_id = novel_id_for_tasks.clone();
         let db = &state.db;
@@ -212,7 +215,7 @@ async fn run_batch_outline_generation(
                 },
             );
 
-            match do_generate_chapter_outline(&app, db, meta.id).await {
+            match do_generate_chapter_outline(&http_client, &app, db, meta.id).await {
                 Ok(_) => {
                     let next = completed.fetch_add(1, Ordering::Relaxed) + 1;
                     let _ = app.emit(
@@ -306,7 +309,7 @@ pub async fn batch_generate_outlines(
         (metas, config.max_concurrent_tasks.max(1) as usize)
     };
 
-    run_batch_outline_generation(app, &state, novel_id, metas, concurrency).await
+    run_batch_outline_generation(state.http_client.clone(), app, &state, novel_id, metas, concurrency).await
 }
 
 #[tauri::command]
@@ -329,7 +332,7 @@ pub async fn batch_generate_outline_chapters(
         (metas, config.max_concurrent_tasks.max(1) as usize)
     };
 
-    run_batch_outline_generation(app, &state, novel_id, metas, concurrency).await
+    run_batch_outline_generation(state.http_client.clone(), app, &state, novel_id, metas, concurrency).await
 }
 
 #[tauri::command]
@@ -455,7 +458,7 @@ pub async fn generate_book_outline(
                     let prompt_text =
                         crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(group), layer as usize);
                     let response =
-                        crate::llm::call_api(&config, &prompt_text, config.summary_max_tokens).await?;
+                        crate::llm::call_api(&state.http_client, &config, &prompt_text, config.summary_max_tokens).await?;
                     let mut outline = outline_mod::parse_book_outline_json(&response)?;
                     outline.created_at = chrono::Utc::now().to_rfc3339();
                     let (entry, _) = promote_group_to_node(
@@ -474,7 +477,7 @@ pub async fn generate_book_outline(
                 let prompt_text =
                     crate::prompt::generate_outline_group_prompt(&make_group_prompt_items(group), layer as usize);
                 let response =
-                    crate::llm::call_api(&config, &prompt_text, config.summary_max_tokens).await?;
+                    crate::llm::call_api(&state.http_client, &config, &prompt_text, config.summary_max_tokens).await?;
                 let mut outline = outline_mod::parse_book_outline_json(&response)?;
                 outline.created_at = chrono::Utc::now().to_rfc3339();
                 let (entry, _) = promote_group_to_node(
