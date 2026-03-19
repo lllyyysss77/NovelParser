@@ -508,7 +508,12 @@ pub async fn generate_book_outline(
                 .map_err(|e| e.to_string())?;
             final_outline = Some(outline);
         } else {
+            // 安全检查：如果归并后节点数没有减少且节点数依然大于1，说明模型输出太长或者 target_tokens 太小，会导致死循环
+            if next_nodes.len() >= nodes.len() {
+                return Err(format!("全书提纲归并停辞：第 {} 层归并后节点数（{}）未能减少。这通常是因为内容过长，请尝试在设置中减小摘要最大 Token 数或增加上下文限制。", layer, next_nodes.len()));
+            }
             nodes = next_nodes;
+
             layer += 1;
         }
     }
